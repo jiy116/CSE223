@@ -1,0 +1,166 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<script type="text/javascript">
+    
+    //initialize all variables
+    var nbString = "";
+    var lastCursor = 0;
+    var currCursor = 0;
+    //the logical clock we use
+
+    //the version number
+    var version_num = 0;
+
+    /*var heap = new MinHeap(null,function(item1,item2){
+        return item1.lClock == item2.lClock ? 0: item1.lClock<item2.lClock ? -1 : 1 ;
+    });*/
+    
+
+    //the class used to store the transferred data
+    Data = function(changedString,lastCursor,currCursor,version_num) {
+        this.changedString = changedString;
+        this.startCursor = lastCursor;
+        this.endCursor = currCursor;
+        this.version_num = version_num;
+    }
+
+
+    setCaretPosition = function(ctrl,pos) {
+        if (ctrl.setSelectionRange) {
+            ctrl.focus();
+            ctrl.setSelectionRange(pos, pos);
+        }
+        else if (ctrl.createTextRange) {
+            var range = ctrl.createTextRange();
+            range.collapse(true);
+            range.moveEnd('character', pos);
+            range.moveStart('character', pos);
+            range.select();
+        }  
+    }
+
+    getCaret = function(node) {
+        if (node.selectionStart) {
+            return node.selectionStart;
+        } else if (!document.selection) {
+            return 0;
+        }
+        var c = "\001",
+        sel = document.selection.createRange(),
+        dul = sel.duplicate(),
+        len = 0;
+
+        dul.moveToElementText(node);
+        sel.text = c;
+        len = dul.text.indexOf(c);
+        sel.moveStart('character',-1);
+        sel.text = "";
+        return len;
+    }
+
+    getChanged = function(node){
+        var textarea = document.getElementById('text1');
+        var currCursor = getCaret(node);
+        cur = node.value;
+        var changedString = null;
+        if(lastCursor < currCursor){
+            changedString = cur.substring(lastCursor,currCursor);
+        } else {
+            changedString = cur.substring(currCursor,lastCursor);
+        }
+
+        data = new Data(changedString,lastCursor,currCursor,version_num);
+        //lClock++;
+        lastCursor = currCursor;
+
+        return data;
+    }
+
+
+    updateText = function(data){
+        //if delete
+        if(data.endCursor < data.startCursor){
+            nbString = nbString.substring(0,data.endCursor)+ nbString.substring(data.startCursor);
+        }
+        //if add
+        else{
+            nbString = nbString.substring(0,data.startCursor) + data.changedString+nbString.substring(data.startCursor);
+        }
+
+        //update the textarea
+        document.getElementById('text1').value = nbString;
+
+        //set the cursor
+        this.lastCursor = data.endCursor;
+        setCaretPosition(document.getElementById('text1'),data.endCursor);
+
+        //update the version_num
+        version_num = data.version_num;
+    }
+
+
+    $(document).ready(function(){
+        namespace = '/test'; // change to an empty string to use the global namespace
+
+        /*
+        @the socket.io documentation recommends sending an explicit package upon connection
+        @this is specially important when using the global namespace
+        */
+        var socket = io.connect('http://' + document.domain + ':' + location.port + namespace);
+
+        socket.on('connect', function() {
+            socket.emit('my connect', {data: 'I\'m connected!'});
+        });
+
+
+        socket.on('my connect', function(msg) {
+            //$('#log1').append('<br>Received #' + msg.count + ': ' + msg.data);
+            //get the initial text
+            $('#text1').val(msg.nbString);
+        });
+        
+
+
+        /*
+        @event handler for server sent data
+        @the data is displayed in the "Received" section of the page
+        */
+        socket.on('my change', function(msg) {
+            //alert(msg.changedString+msg.startCursor+msg.endCursor);
+            data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);    
+            /*heap.push(data)
+            //alert(heap.getMin().lClock-lClock);
+            if(heap.size()!=0){
+                min_data = heap.getMin();
+                while(min_data.lClock == (lClock+1)){
+                    updateText(heap.pop());
+                    if(heap.size()==0){
+                        break;
+                    }
+                }
+            }*/
+            updateText(data)
+        });
+        
+        /* 
+        @textarea change event will activate this method
+        */
+        $('textarea#text1').bind('input propertychange',function(){
+            var getData = getChanged(document.getElementById('text1'));
+            $('#text1').val(nbString);
+            socket.emit('my log',{changedString:getData.changedString, 
+                                  startCursor: getData.startCursor,
+                                  endCursor: getData.endCursor,                
+                                  version: getData.version_num });
+        });
+    });
+
+
+</script>
+<textarea rows = "20" cols = "50" id = 'text1' ></textarea>
+
+
+<h2>Receive:</h2>
+<div id = 'log1'></div>
+{% endblock %}
