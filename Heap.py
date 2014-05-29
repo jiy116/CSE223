@@ -46,6 +46,12 @@ class BinHeap:
 	def isEmpty():
 		return self.size == 0
 
+	def isDelivable():
+		return self.heaplist[0]['deliverable']
+
+	def setDelivable():
+		self.heaplist[0]['deliverable'] = True
+
 if __name__ == "__main__":
 	myheap = BinHeap()
 	for i in range(10):

@@ -38,9 +38,29 @@ logs = {}
 #the log list
 logList = BinHeap[]
 
-
+#send the head of queue to other clients if deliverable
 def sendQueue():
-    while()
+    global logList
+    while True:
+        if logList.isEmpty() == False && logList.isDeliverable() == True:
+            topLog = logList.peek()
+            emit('my change',{'newLog':topLog})
+            logList.remove()
+
+def checkLog():
+    global logList
+    mylog = logList.peek()
+    sendData = {'action':"checkLog",'theLog':mylog}
+    for index in range(len(socketsList)):
+        try:
+            socketsList[index].send(json.dumps(sendData))
+
+        except:
+            #delete the socket if it can not be connected
+            socketsList[index].close()
+            del socketsList[index]
+            continue
+    return True
 
 def listenServer():
     global nbString
@@ -59,6 +79,8 @@ def listenServer():
         connection,address2 = sock.accept()
         buf = json.loads(connection.recv(1024))
         print "action is " + buf['action']
+
+        #send the string to other server
         if str(buf['action']) == "requestString":
             #add a socket according to the new server
             succ = addnewSocket(buf['id'])
@@ -67,8 +89,15 @@ def listenServer():
             data = {'text':nbString,'vclock':clock}
             print json.dumps(data)
             connection.sendall(json.dumps(data))
+
+        #add the log to self queue
         elif str(buf['action']) == "server_log":
-            log_send({'source':"server",'data':buf['log']})
+            logList.add(buf['log'])
+
+        #get the request to check the log
+        elif str(buf['action']) == "checkLog":
+
+            
         connection.close()
     sock.close()
     del sock
@@ -180,14 +209,20 @@ def broadcast_server(log):
     global socketsList
     sendData = {'action':"server_log",'log':log}
     print socketsList
-    for i in socketsList:
-        socketsList[i].send(json.dumps(sendData))
+    for i in range(len(socketsList)):
+        try:
+            socketsList[i].send(json.dumps(sendData))
+        except socket.error,msg:
+            del socketsList[i]
+            continue;
 
 
 @app.route('/')
 def index():
     thread = Thread(target=listenServer)
     thread.start()
+    thread2 = Thread(target=sendQueue)
+    thread2.start()
     connectInitial()
     return render_template('index.html')
 
@@ -215,7 +250,7 @@ def test_message(message):
     emit('my connect', {'data': message['data'],'nbString':nbString})
 
 
-#get the log from other clients
+#get the log from clients
 @socketio.on('my log', namespace='/test')
 def log_send(message):
     global version_num
@@ -223,6 +258,7 @@ def log_send(message):
     global logs
     global logList
     global clock
+    global serverId
 
     log = updateLog(message['changedString'],message['startCursor'],message['endCursor'])
 
@@ -233,26 +269,11 @@ def log_send(message):
     #update the vector clock and save it in the log list
     clock[serverId] = clock[serverId] + 1
     newlog = {'changedString':message['changedString'],'startCursor': message['startCursor'],
-              'endCursor': message['endCursor'],'vClock': clock,'deliverable':False}
+              'endCursor': message['endCursor'],'vClock': clock,'deliverable':False,'id':serverId}
     logList.add(newlog)
 
     #to other servers
     broadcast_server(newlog)
-
-
-#send the log to other servers
-def server_send(log):
-    global version_num
-    global nbString
-    global logs
-
-    version_num = version_num + 1
-    broadcast_server({'changedString': message['changedString'],
-                      'startCursor': message['startCursor'],
-                      'endCursor': message['endCursor'],
-                      'version_num': version_num,
-                      'vclock':clock,
-                      'id':serverId})
 
 
 if __name__ == '__main__':
