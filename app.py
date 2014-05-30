@@ -5,13 +5,13 @@ import time
 import sys
 import socket
 import json
-import clkPort
 #from socketIO_client import BaseNamespace,SocketIO_client
 from threading import Thread
 from flask import Flask, render_template, session, request,jsonify,request
 from flask.ext.socketio import SocketIO, emit, join_room, leave_room
 from Heap import BinHeap
 from multiprocessing.dummy import Pool as ThreadPool
+from clkPort import clkPort
 
 app = Flask(__name__)
 app.debug = False
@@ -29,8 +29,8 @@ version_num = 0
 socketsList = {}
 
 #the vector clock in server
-serverMax = 3
-clock = [0]*serverMax
+serverMax = 1
+clock = [0]*3
 
 #the server's id
 serverId = 0
@@ -43,13 +43,14 @@ logMap = {}
 sendThreshold = 0
 
 #the log list
-logList = BinHeap[]
+logList = BinHeap()
 
 #send the head of queue to other clients if deliverable
 def sendQueue():
     global logList
     while True:
-        if logList.isEmpty() == False && logList.isDeliverable() == True:
+        time.sleep(0.1)
+        if logList.isEmpty() == False and logList.isDeliverable() == True:
             topLog = logList.peek()
             emit('my change',{'newLog':topLog})
             logList.remove()
@@ -71,6 +72,7 @@ def checkLog():
 
 def listenServer():
     global nbString
+    global logMap
 
     #open a socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -100,35 +102,53 @@ def listenServer():
         #add the log to self queue and send back the acknowledgement
         elif str(buf['action']) == "server_log":
             logList.add(buf['log'])
-            newClkPort = clkPort(buf['log'])
+            newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
             data = {'action':"ack",'clkPort':newClkPort}
-            conncection.sendall(json.dumps(data))
+            connection.sendall(json.dumps(data))
 
         #receive the acknowledgement
         elif str(buf['action']) == "ack":
             logMap[buf['clkPort']] = logMap[buf['clkPort']]+1
+            #if the num is enough
             if logMap[buf['clkPort']] >= sendThreshold:
                 logList.setDeliverable(buf['clkPort'])
+                del logList[buf['clkPort']]
                 broadcast_server("commit",buf['clkPort'])
 
         #receive the commit command from the coordinator
         elif str(buf['action']) == "commit":
+            logList.setDeliverable(buf['log'])
                 
         connection.close()
     sock.close()
     del sock
 
 
+#reconnect to specific port
+def reConn(port,num):
+    for x in xrange(0,num):
+        try:
+            #build a client
+            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+            client.settimeout(5)
+            address = ('127.0.0.1',port+5000)
+            client.connect(address)
+
+            #add the client socket to our list
+            socketsList[port] = client
+            return client,True
+                
+        except socket.error,msg:
+            continue
+    return None,False
+        
+
 #add a new socket to the list
 def addnewSocket(newId):
-    newport = newId+5000
     try:
         #build a client
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-        client.settimeout(5)
-        address = ('127.0.0.1',newport)
-        client.connect(address)
+        client,succ = reConn(newId,2)
 
         #add the client socket to our list
         socketsList[newId] = client
@@ -224,9 +244,13 @@ def clock_compare(clock1,clock2):
 #broadcast some data to all other servers
 def broadcast_server(action,log):
     global socketsList
+    print action
+    print log
     sendData = {'action':action,'log':log}
     print socketsList
-    for i in range(len(socketsList)):
+    keycomb = socketsList.keys()
+    for i in keycomb:
+        print i
         try:
             socketsList[i].send(json.dumps(sendData))
         except socket.error,msg:
@@ -281,7 +305,7 @@ def log_send(message):
     #to other servers
     newClkPort = clkPort(clock,serverId)
     logMap[newClkPort] = 0
-    broadcast_server(newlog)
+    broadcast_server("server_log",newlog)
 
 
 if __name__ == '__main__':
