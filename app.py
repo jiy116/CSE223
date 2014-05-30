@@ -7,7 +7,7 @@ import socket
 import json
 #from socketIO_client import BaseNamespace,SocketIO_client
 from threading import Thread
-from flask import Flask, render_template, session, request,jsonify,request
+from flask import Flask, render_template, session, request,jsonify,request,current_app
 from flask.ext.socketio import SocketIO, emit, join_room, leave_room
 from Heap import BinHeap
 from multiprocessing.dummy import Pool as ThreadPool
@@ -47,13 +47,20 @@ logList = BinHeap()
 
 #send the head of queue to other clients if deliverable
 def sendQueue():
+    #with app.app_context():
     global logList
+    global socketio
     while True:
-        time.sleep(0.1)
+        time.sleep(1)
         if logList.isEmpty() == False and logList.isDeliverable() == True:
+            logList.printheap()
             topLog = logList.peek()
-            emit('my change',{'newLog':topLog})
-            logList.remove()
+            print topLog
+            updateText(topLog)
+            #otherApp = SocketIO(current_app)
+            socketio.emit('my change',{'changedString':topLog['changedString'],'startCursor':topLog['startCursor'],'endCursor':topLog['endCursor'],'version_num':1},
+                          {'room':serverId,'broadcast':True,'namespace':'/test'})
+            #logList.remove()
 
 def checkLog():
     global logList
@@ -85,41 +92,64 @@ def listenServer():
     sock.listen(5)
     print "bind OK!"
     while True:
-        connection,address2 = sock.accept()
-        buf = json.loads(connection.recv(1024))
-        print "action is " + buf['action']
+        try:
+            connection,address2 = sock.accept()
+            buf = json.loads(connection.recv(1024))
+            print "action is " + buf['action']
 
-        #send the string to other server
-        if str(buf['action']) == "requestString":
-            #add a socket according to the new server
-            succ = addnewSocket(buf['id'])
-            if succ == False:
-                continue
-            data = {'text':nbString,'vclock':clock}
-            print json.dumps(data)
-            connection.sendall(json.dumps(data))
+            #send the string to other server
+            if str(buf['action']) == "requestString":
+                #add a socket according to the new server
+                succ = addnewSocket(buf['id'])
+                if succ == False:
+                    continue
+                data = {'text':nbString,'vclock':clock}
+                print json.dumps(data)
+                connection.sendall(json.dumps(data))
+                connection.close()
 
-        #add the log to self queue and send back the acknowledgement
-        elif str(buf['action']) == "server_log":
-            logList.add(buf['log'])
-            newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
-            data = {'action':"ack",'clkPort':newClkPort}
-            connection.sendall(json.dumps(data))
+            #add the log to self queue and send back the acknowledgement
+            elif str(buf['action']) == "server_log":
+                logList.add(buf['log'])
+                #newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
+                data = {'action':"ack",'vClock':buf['log']['vClock'],'id':buf['log']['id']}
+                print data
+                print socketsList
+                connection.close()
+                newClient, succ = reConn(buf['log']['id'],2)
+                if succ == True:
+                    socketsList[buf['log']['id']].sendall(json.dumps(data))
+                else:
+                    continue
 
-        #receive the acknowledgement
-        elif str(buf['action']) == "ack":
-            logMap[buf['clkPort']] = logMap[buf['clkPort']]+1
-            #if the num is enough
-            if logMap[buf['clkPort']] >= sendThreshold:
-                logList.setDeliverable(buf['clkPort'])
-                del logList[buf['clkPort']]
-                broadcast_server("commit",buf['clkPort'])
+                #connection.sendall(json.dumps(data))
+                #print "close good!"
+                #connection.close()
 
-        #receive the commit command from the coordinator
-        elif str(buf['action']) == "commit":
-            logList.setDeliverable(buf['log'])
+            #receive the acknowledgement
+            elif str(buf['action']) == "ack":
+                newClkPort = clkPort(buf['vClock'],buf['id'])
+                print logMap
+                logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] = logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]+1
+                print logMap
+                print logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
+                connection.close()
+                #if the num is enough
+                if logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] >= sendThreshold:
+                    logList.setDeliverable(json.dumps({'clock':buf['vClock'],'id':buf['id']}))
+                    del logList[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
+                    broadcast_server("commit",{'vClock':buf['vClock'],'id':buf['id']})
+
+            #receive the commit command from the coordinator
+            elif str(buf['action']) == "commit":
+                newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
+                logList.setDeliverable(json.dumps({'clock':buf['vClock'],'id':buf['id']}))
+                connection.close()
+
+        except:
+            if connection != None:
+                connection.close()
                 
-        connection.close()
     sock.close()
     del sock
 
@@ -159,9 +189,12 @@ def addnewSocket(newId):
 
 def updateText(log):
     global nbString
-    startCursor = log[1]
-    endCursor = log[2]
-    changedString = log[0]
+    global logList
+
+    print log
+    startCursor = log['startCursor']
+    endCursor = log['endCursor']
+    changedString = log['changedString']
 
     if endCursor < startCursor :
         if startCursor <= len(nbString):
@@ -252,8 +285,10 @@ def broadcast_server(action,log):
     for i in keycomb:
         print i
         try:
+            reConn(i,2)
             socketsList[i].send(json.dumps(sendData))
         except socket.error,msg:
+            print "delete socket!"
             del socketsList[i]
             continue;
 
@@ -292,7 +327,6 @@ def log_send(message):
 
     log = updateLog(message['changedString'],message['startCursor'],message['endCursor'])
 
-    updateText(log)
     version_num = version_num + 1
     logs[version_num] = log
 
@@ -304,7 +338,7 @@ def log_send(message):
 
     #to other servers
     newClkPort = clkPort(clock,serverId)
-    logMap[newClkPort] = 0
+    logMap[json.dumps({'clock':clock,'id':serverId})] = 0
     broadcast_server("server_log",newlog)
 
 

@@ -1,4 +1,5 @@
 from clkPort import clkPort
+import json
 class BinHeap:
 	def __init__(self):
 		self.heaplist = []
@@ -13,12 +14,11 @@ class BinHeap:
 		print(self.heaplist)
 
 	def add(self, val):
-		clk = clkPort(val['vClock'], val['id'])
-		self.dic[clk] = val
+		self.dic[json.dumps({'clock':val['vClock'], 'id':val['id']})] = val
 		self.heaplist.append(val)
 		index = self.size
 		while(index > 0):
-			newer = clkCompare(self.heaplist[index]['vClock'], self.heaplist[(index+1) / 2 - 1]['vClock']) 
+			newer = self.clkCompare(self.heaplist[index]['vClock'], self.heaplist[(index+1) / 2 - 1]['vClock']) 
 			if newer == -1:
 				newer = self.heaplist[index]['id'] > self.heaplist[(index+1) / 2 - 1]['id']
 			if not newer:
@@ -29,8 +29,7 @@ class BinHeap:
 	def remove(self):
 		if (self.size == 0):
 			return
-		clk = clkPort(val['vClock'], val['id'])
-		del self.dic[clk]
+		del self.dic[json.dumps({'clock':self.heaplist[0]['vClock'],'id':self.heaplist[0]['id']})]
 		result = self.heaplist.pop(0)
 		self.size -= 1
 		self.heaplist.insert(0, self.heaplist.pop(self.size - 1))
@@ -50,9 +49,9 @@ class BinHeap:
 				break
 
 	def peek(self):
-		if (self.size == 0):
+		if self.size == 0:
 			return
-		result = self.heaplist[0]
+		return self.heaplist[0]
 
 	def isEmpty(self):
 		return self.size == 0
@@ -68,7 +67,7 @@ class BinHeap:
 			return
 		self.dic[clkport]['deliverable'] = True
 
-	def clkCompare(lista, listb):
+	def clkCompare(self, lista, listb):
 		length = len(lista)
 		if length != len(listb):
 			return -1	

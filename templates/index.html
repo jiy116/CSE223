@@ -127,7 +127,8 @@
         @the data is displayed in the "Received" section of the page
         */
         socket.on('my change', function(msg) {
-            //alert(msg.changedString+msg.startCursor+msg.endCursor);
+
+            alert(msg.changedString+msg.startCursor+msg.endCursor);
             data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);    
             /*heap.push(data)
             //alert(heap.getMin().lClock-lClock);
