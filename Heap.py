@@ -1,7 +1,11 @@
+import clkPort
+
 class BinHeap:
 	def __init__(self):
 		self.heaplist = []
 		self.size = 0
+		self.logMap = {}
+
 	def swap(self, a, b):
 		tmp = self.heaplist[a]
 		self.heaplist[a] = self.heaplist[b]
@@ -18,6 +22,7 @@ class BinHeap:
 				self.swap(index, (index+1) / 2 - 1)
 			index = (index+1) / 2 - 1
 		self.size += 1
+		newClkPort = clkPort(val.vClock,val.serverId)
 
 	def remove(self):
 		if (self.size == 0):

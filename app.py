@@ -5,11 +5,13 @@ import time
 import sys
 import socket
 import json
+import clkPort
 #from socketIO_client import BaseNamespace,SocketIO_client
 from threading import Thread
 from flask import Flask, render_template, session, request,jsonify,request
 from flask.ext.socketio import SocketIO, emit, join_room, leave_room
 from Heap import BinHeap
+from multiprocessing.dummy import Pool as ThreadPool
 
 app = Flask(__name__)
 app.debug = False
@@ -27,13 +29,18 @@ version_num = 0
 socketsList = {}
 
 #the vector clock in server
-clock = [0]*3
+serverMax = 3
+clock = [0]*serverMax
 
 #the server's id
 serverId = 0
 
 #a map to keep all log
 logs = {}
+
+#a map to indicate if the log should be sent
+logMap = {}
+sendThreshold = 0
 
 #the log list
 logList = BinHeap[]
@@ -90,17 +97,27 @@ def listenServer():
             print json.dumps(data)
             connection.sendall(json.dumps(data))
 
-        #add the log to self queue
+        #add the log to self queue and send back the acknowledgement
         elif str(buf['action']) == "server_log":
             logList.add(buf['log'])
+            newClkPort = clkPort(buf['log'])
+            data = {'action':"ack",'clkPort':newClkPort}
+            conncection.sendall(json.dumps(data))
 
-        #get the request to check the log
-        elif str(buf['action']) == "checkLog":
+        #receive the acknowledgement
+        elif str(buf['action']) == "ack":
+            logMap[buf['clkPort']] = logMap[buf['clkPort']]+1
+            if logMap[buf['clkPort']] >= sendThreshold:
+                logList.setDeliverable(buf['clkPort'])
+                broadcast_server("commit",buf['clkPort'])
 
-            
+        #receive the commit command from the coordinator
+        elif str(buf['action']) == "commit":
+                
         connection.close()
     sock.close()
     del sock
+
 
 #add a new socket to the list
 def addnewSocket(newId):
@@ -204,10 +221,10 @@ def clock_compare(clock1,clock2):
             return True
     return False
 
-#broadcast the log to all other servers
-def broadcast_server(log):
+#broadcast some data to all other servers
+def broadcast_server(action,log):
     global socketsList
-    sendData = {'action':"server_log",'log':log}
+    sendData = {'action':action,'log':log}
     print socketsList
     for i in range(len(socketsList)):
         try:
@@ -215,7 +232,6 @@ def broadcast_server(log):
         except socket.error,msg:
             del socketsList[i]
             continue;
-
 
 @app.route('/')
 def index():
@@ -231,22 +247,12 @@ def textRequest():
     print "try to get text!"
     emit('server_connect',{'port' : serverId})
 
-@socketio.on('server_connect')
-def textGiving(message):
-    join_room('server')
-    print "send text!"
-    emit('initial_text',{'text' : nbString, 'vector_clock' : clock})
-
-@socketio.on('initial_text')
-def initialText(message):
-    print "initialize text!"
-    nbString = message['text']
-
 
 @socketio.on('my connect', namespace='/test')
 def test_message(message):
     global nbString
     print "go go go!"+nbString
+    join_room(serverId)
     emit('my connect', {'data': message['data'],'nbString':nbString})
 
 
@@ -273,6 +279,8 @@ def log_send(message):
     logList.add(newlog)
 
     #to other servers
+    newClkPort = clkPort(clock,serverId)
+    logMap[newClkPort] = 0
     broadcast_server(newlog)
 
 
