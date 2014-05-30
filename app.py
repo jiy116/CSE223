@@ -51,16 +51,14 @@ def sendQueue():
     global logList
     global socketio
     while True:
-        time.sleep(1)
+        time.sleep(0.1)
         if logList.isEmpty() == False and logList.isDeliverable() == True:
-            logList.printheap()
             topLog = logList.peek()
-            print topLog
             updateText(topLog)
             #otherApp = SocketIO(current_app)
             socketio.emit('my change',{'changedString':topLog['changedString'],'startCursor':topLog['startCursor'],'endCursor':topLog['endCursor'],'version_num':1},
-                          {'room':serverId,'broadcast':True,'namespace':'/test'})
-            #logList.remove()
+                          namespace='/test')
+            logList.remove()
 
 def checkLog():
     global logList
@@ -80,6 +78,7 @@ def checkLog():
 def listenServer():
     global nbString
     global logMap
+    global logList
 
     #open a socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -113,8 +112,6 @@ def listenServer():
                 logList.add(buf['log'])
                 #newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
                 data = {'action':"ack",'vClock':buf['log']['vClock'],'id':buf['log']['id']}
-                print data
-                print socketsList
                 connection.close()
                 newClient, succ = reConn(buf['log']['id'],2)
                 if succ == True:
@@ -128,22 +125,18 @@ def listenServer():
 
             #receive the acknowledgement
             elif str(buf['action']) == "ack":
-                newClkPort = clkPort(buf['vClock'],buf['id'])
-                print logMap
                 logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] = logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]+1
-                print logMap
-                print logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
                 connection.close()
                 #if the num is enough
                 if logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] >= sendThreshold:
                     logList.setDeliverable(json.dumps({'clock':buf['vClock'],'id':buf['id']}))
-                    del logList[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
+                    del logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
+                    print "commit"
                     broadcast_server("commit",{'vClock':buf['vClock'],'id':buf['id']})
 
             #receive the commit command from the coordinator
             elif str(buf['action']) == "commit":
-                newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
-                logList.setDeliverable(json.dumps({'clock':buf['vClock'],'id':buf['id']}))
+                logList.setDeliverable(json.dumps({'clock':buf['log']['vClock'],'id':buf['log']['id']}))
                 connection.close()
 
         except:
@@ -191,7 +184,6 @@ def updateText(log):
     global nbString
     global logList
 
-    print log
     startCursor = log['startCursor']
     endCursor = log['endCursor']
     changedString = log['changedString']
@@ -206,7 +198,6 @@ def updateText(log):
             nbString = nbString[0:startCursor] + changedString+nbString[endCursor:]
         else:
             nbString = nbString[0:startCursor] + changedString
-    print nbString
 
 
 def updateLog(changedString,startCursor,endCursor):
@@ -276,14 +267,10 @@ def clock_compare(clock1,clock2):
 
 #broadcast some data to all other servers
 def broadcast_server(action,log):
-    global socketsList
-    print action
-    print log
     sendData = {'action':action,'log':log}
     print socketsList
     keycomb = socketsList.keys()
     for i in keycomb:
-        print i
         try:
             reConn(i,2)
             socketsList[i].send(json.dumps(sendData))
@@ -310,8 +297,10 @@ def textRequest():
 @socketio.on('my connect', namespace='/test')
 def test_message(message):
     global nbString
-    print "go go go!"+nbString
-    join_room(serverId)
+    print socketio.rooms
+    #join_room(serverId)
+    print "now the room is :"
+    print socketio.rooms
     emit('my connect', {'data': message['data'],'nbString':nbString})
 
 
@@ -335,6 +324,8 @@ def log_send(message):
     newlog = {'changedString':message['changedString'],'startCursor': message['startCursor'],
               'endCursor': message['endCursor'],'vClock': clock,'deliverable':False,'id':serverId}
     logList.add(newlog)
+
+    #socketio.emit('my change',{'changedString':message['changedString'],'startCursor':message['startCursor'],'endCursor':message['endCursor'],'version_num':1})
 
     #to other servers
     newClkPort = clkPort(clock,serverId)

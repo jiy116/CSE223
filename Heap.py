@@ -32,6 +32,8 @@ class BinHeap:
 		del self.dic[json.dumps({'clock':self.heaplist[0]['vClock'],'id':self.heaplist[0]['id']})]
 		result = self.heaplist.pop(0)
 		self.size -= 1
+		if (self.size == 0):
+			return
 		self.heaplist.insert(0, self.heaplist.pop(self.size - 1))
 		index = 0
 		while (index + 1) * 2  - 1 <  self.size:

@@ -128,7 +128,7 @@
         */
         socket.on('my change', function(msg) {
 
-            alert(msg.changedString+msg.startCursor+msg.endCursor);
+            //alert("123");
             data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);    
             /*heap.push(data)
             //alert(heap.getMin().lClock-lClock);
