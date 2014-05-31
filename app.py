@@ -5,6 +5,7 @@ import time
 import sys
 import socket
 import json
+import threading
 #from socketIO_client import BaseNamespace,SocketIO_client
 from threading import Thread
 from flask import Flask, render_template, session, request,jsonify,request,current_app
@@ -12,6 +13,7 @@ from flask.ext.socketio import SocketIO, emit, join_room, leave_room
 from Heap import BinHeap
 from multiprocessing.dummy import Pool as ThreadPool
 from clkPort import clkPort
+from MyThread import MyThread
 
 app = Flask(__name__)
 app.debug = False
@@ -34,6 +36,10 @@ clock = [0]*serverMax
 
 #the server's id
 serverId = 0
+
+#threads list
+threadnum = 0
+threads = {}
 
 #a map to keep all log
 logs = {}
@@ -96,7 +102,8 @@ def listenServer():
             connection,address2 = sock.accept()
             print "new thread!"
             sendThreshold += 1
-            succ = Thread(target=receive(connection)).start()
+            MyThread(connection).start()
+            #Thread(target=receive(connection)).start()
 
                 #connection.sendall(json.dumps(data))
                 #print "close good!"
@@ -184,7 +191,7 @@ def receive(connection):
             print sys.exc_info()[0]
             connection.close()
             sendThreshold -= 1
-            return False
+            return
 
 
 
