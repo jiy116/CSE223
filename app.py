@@ -29,8 +29,8 @@ version_num = 0
 socketsList = {}
 
 #the vector clock in server
-serverMax = 1
-clock = [0]*3
+serverMax = 3
+clock = [0]*serverMax
 
 #the server's id
 serverId = 0
@@ -79,6 +79,7 @@ def listenServer():
     global nbString
     global logMap
     global logList
+    global sendThreshold
 
     #open a socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -88,13 +89,14 @@ def listenServer():
     if ret<0:
         print "failed to reuse"
     sock.bind(address)
-    sock.listen(5)
+    sock.listen(50)
     print "bind OK!"
     while True:
         try:
             connection,address2 = sock.accept()
             print "new thread!"
-            Thread(target=receive(connection)).start()
+            sendThreshold += 1
+            succ = Thread(target=receive(connection)).start()
 
                 #connection.sendall(json.dumps(data))
                 #print "close good!"
@@ -116,6 +118,8 @@ def listenServer():
 
 
 def receive(connection):
+    global sendThreshold
+
     print "server receive begin!"
     print serverId
     while True:
@@ -146,6 +150,10 @@ def receive(connection):
                 logList.add(buf['log'])
                 #newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
                 data = {'action':"ack",'vClock':buf['log']['vClock'],'id':buf['log']['id']}
+
+                #update clock
+                update_clock(buf['log']['vClock'])
+
                 try:
                     socketsList[buf['log']['id']].sendall(json.dumps(data))
                 except:
@@ -161,7 +169,6 @@ def receive(connection):
 
             elif str(buf['action']) == "ack":
                 logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] = logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]+1
-                connection.close()
                 #if the num is enough
                 if logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] >= sendThreshold:
                     logList.setDeliverable(json.dumps({'clock':buf['vClock'],'id':buf['id']}))
@@ -172,16 +179,11 @@ def receive(connection):
             elif str(buf['action']) == "commit":
                 logList.setDeliverable(json.dumps({'clock':buf['log']['vClock'],'id':buf['log']['id']}))
             
-        except socket.error,msg:
-            print "socket error: "+msg
-            return False
-        except ValueError,msg:
-            print "value error: "+msg
-            return False
         except:
             print "connection close!"
             print sys.exc_info()[0]
             connection.close()
+            sendThreshold -= 1
             return False
 
 
@@ -364,6 +366,11 @@ def log_send(message):
     clock[serverId] = clock[serverId] + 1
     newlog = {'changedString':message['changedString'],'startCursor': message['startCursor'],
               'endCursor': message['endCursor'],'vClock': clock,'deliverable':False,'id':serverId}
+
+    #if only one server
+    if sendThreshold == 0:
+        newlog['deliverable'] = True
+
     logList.add(newlog)
 
     #socketio.emit('my change',{'changedString':message['changedString'],'startCursor':message['startCursor'],'endCursor':message['endCursor'],'version_num':1})
