@@ -13,7 +13,6 @@ from flask.ext.socketio import SocketIO, emit, join_room, leave_room
 from Heap import BinHeap
 from multiprocessing.dummy import Pool as ThreadPool
 from clkPort import clkPort
-from MyThread import MyThread
 
 app = Flask(__name__)
 app.debug = False
@@ -50,6 +49,15 @@ sendThreshold = 0
 
 #the log list
 logList = BinHeap()
+
+#the thread class
+class MyThread(threading.Thread):
+    def __init__(self,connection):
+        threading.Thread.__init__(self)
+        self.connection = connection
+ 
+    def run(self):
+        receive(self.connection)
 
 #send the head of queue to other clients if deliverable
 def sendQueue():
