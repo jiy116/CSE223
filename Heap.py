@@ -15,6 +15,8 @@ class BinHeap:
 
 	def add(self, val):
 		self.dic[json.dumps({'clock':val['vClock'], 'id':val['id']})] = val
+		print "add:"
+		print val
 		self.heaplist.append(val)
 		index = self.size
 		while(index > 0):
@@ -31,6 +33,8 @@ class BinHeap:
 			return
 		del self.dic[json.dumps({'clock':self.heaplist[0]['vClock'],'id':self.heaplist[0]['id']})]
 		result = self.heaplist.pop(0)
+		print "remove:"
+		print result
 		self.size -= 1
 		if (self.size == 0):
 			return

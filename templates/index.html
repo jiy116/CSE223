@@ -16,6 +16,7 @@
         return item1.lClock == item2.lClock ? 0: item1.lClock<item2.lClock ? -1 : 1 ;
     });*/
     
+    
 
     //the class used to store the transferred data
     Data = function(changedString,lastCursor,currCursor,version_num) {
@@ -40,6 +41,7 @@
         }  
     }
 
+
     getCaret = function(node) {
         if (node.selectionStart) {
             return node.selectionStart;
@@ -63,7 +65,7 @@
         var textarea = document.getElementById('text1');
         var currCursor = getCaret(node);
         cur = node.value;
-        var changedString = null;
+        var changedString = null;  
         if(lastCursor < currCursor){
             changedString = cur.substring(lastCursor,currCursor);
         } else {
@@ -73,15 +75,22 @@
         data = new Data(changedString,lastCursor,currCursor,version_num);
         //lClock++;
         lastCursor = currCursor;
-
+        //alert(changedString)
         return data;
     }
+
+
+    onmouseClick = function(node){
+        //alert("get here");
+        lastCursor = getCaret(node);
+    }
+
 
 
     updateText = function(data){
         //if delete
         if(data.endCursor < data.startCursor){
-            nbString = nbString.substring(0,data.endCursor)+ nbString.substring(data.startCursor);
+            nbString = nbString.substring(0,data.endCursor) + nbString.substring(data.startCursor);
         }
         //if add
         else{
@@ -118,6 +127,8 @@
             //$('#log1').append('<br>Received #' + msg.count + ': ' + msg.data);
             //get the initial text
             $('#text1').val(msg.nbString);
+            nbString = msg.nbString;
+            lastCursor = len(msg.nbString);
         });
         
 
@@ -127,8 +138,7 @@
         @the data is displayed in the "Received" section of the page
         */
         socket.on('my change', function(msg) {
-
-            //alert("123");
+            //alert(msg.changedString+msg.startCursor+msg.endCursor);
             data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);    
             /*heap.push(data)
             //alert(heap.getMin().lClock-lClock);
@@ -155,11 +165,21 @@
                                   endCursor: getData.endCursor,                
                                   version: getData.version_num });
         });
+
+
+
+        $('textarea#text1').bind('click',function(){
+            onmouseClick(document.getElementById('text1'));
+        });
+
+
+
+
     });
 
 
 </script>
-<textarea rows = "20" cols = "50" id = 'text1' ></textarea>
+<textarea rows = "20" cols = "50" id = 'text1'></textarea>
 
 
 <h2>Receive:</h2>

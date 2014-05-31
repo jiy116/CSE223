@@ -93,7 +93,42 @@ def listenServer():
     while True:
         try:
             connection,address2 = sock.accept()
-            buf = json.loads(connection.recv(1024))
+            print "new thread!"
+            Thread(target=receive(connection)).start()
+
+                #connection.sendall(json.dumps(data))
+                #print "close good!"
+                #connection.close()
+
+            #receive the acknowledgement
+
+        except TypeError,msg:
+            print "TypeError"
+            print msg
+
+        except:
+            print sys.exc_info()[0]
+            print "failed to open thread!"
+            break
+                
+    sock.close()
+    del sock
+
+
+def receive(connection):
+    print "server receive begin!"
+    print serverId
+    while True:
+        try:
+            recvdata = connection.recv(1024)
+            if recvdata == None:
+                print "empty recv!"
+                continue
+            buf = json.loads(recvdata)
+
+            print "get buf!"
+            print serverId
+
             print "action is " + buf['action']
 
             #send the string to other server
@@ -105,25 +140,25 @@ def listenServer():
                 data = {'text':nbString,'vclock':clock}
                 print json.dumps(data)
                 connection.sendall(json.dumps(data))
-                connection.close()
 
             #add the log to self queue and send back the acknowledgement
             elif str(buf['action']) == "server_log":
                 logList.add(buf['log'])
                 #newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
                 data = {'action':"ack",'vClock':buf['log']['vClock'],'id':buf['log']['id']}
-                connection.close()
-                newClient, succ = reConn(buf['log']['id'],2)
-                if succ == True:
+                try:
                     socketsList[buf['log']['id']].sendall(json.dumps(data))
-                else:
-                    continue
+                except:
+                    succ = reConn(buf['log']['id'],2)
+                    if succ:
+                        try:
+                            socketsList[buf['log']['id']].sendall(json.dumps(data))
+                        except:
+                            continue
+                    else:
+                        #coordinator dies
+                        continue
 
-                #connection.sendall(json.dumps(data))
-                #print "close good!"
-                #connection.close()
-
-            #receive the acknowledgement
             elif str(buf['action']) == "ack":
                 logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] = logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]+1
                 connection.close()
@@ -131,26 +166,31 @@ def listenServer():
                 if logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] >= sendThreshold:
                     logList.setDeliverable(json.dumps({'clock':buf['vClock'],'id':buf['id']}))
                     del logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
-                    print "commit"
                     broadcast_server("commit",{'vClock':buf['vClock'],'id':buf['id']})
 
             #receive the commit command from the coordinator
             elif str(buf['action']) == "commit":
                 logList.setDeliverable(json.dumps({'clock':buf['log']['vClock'],'id':buf['log']['id']}))
-                connection.close()
-
+            
+        except socket.error,msg:
+            print "socket error: "+msg
+            return False
+        except ValueError,msg:
+            print "value error: "+msg
+            return False
         except:
-            if connection != None:
-                connection.close()
-                
-    sock.close()
-    del sock
+            print "connection close!"
+            print sys.exc_info()[0]
+            connection.close()
+            return False
+
 
 
 #reconnect to specific port
 def reConn(port,num):
     for x in xrange(0,num):
         try:
+            time.sleep(0.1)
             #build a client
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
@@ -160,22 +200,19 @@ def reConn(port,num):
 
             #add the client socket to our list
             socketsList[port] = client
-            return client,True
+            return True
                 
         except socket.error,msg:
             continue
-    return None,False
+    return False
         
 
 #add a new socket to the list
 def addnewSocket(newId):
     try:
         #build a client
-        client,succ = reConn(newId,2)
-
-        #add the client socket to our list
-        socketsList[newId] = client
-        return True
+        succ = reConn(newId,2)
+        return succ
                 
     except socket.error,msg:
         return False
@@ -194,8 +231,8 @@ def updateText(log):
         else:
             nbString = nbString[0:endCursor]
     else:
-        if endCursor <= len(nbString):
-            nbString = nbString[0:startCursor] + changedString+nbString[endCursor:]
+        if endCursor <= len(nbString) + len(changedString):
+            nbString = nbString[0:startCursor] + changedString+nbString[startCursor:]
         else:
             nbString = nbString[0:startCursor] + changedString
 
@@ -253,8 +290,15 @@ def connectInitial():
                 continue
 
     if changed == True:
-        clock = tempclock
+        update_clock(tempclock)
         nbString = tempString
+
+#update the clock
+def update_clock(other):
+    global clock
+    for i in xrange(0,len(clock)):
+        if clock[i] < other[i]:
+            clock[i] = other[i]
 
 #compare two vector clocks
 def clock_compare(clock1,clock2):
@@ -272,20 +316,20 @@ def broadcast_server(action,log):
     keycomb = socketsList.keys()
     for i in keycomb:
         try:
-            reConn(i,2)
             socketsList[i].send(json.dumps(sendData))
         except socket.error,msg:
-            print "delete socket!"
-            del socketsList[i]
-            continue;
+            succ = reConn(i,2)
+            if succ:
+                socketsList[i].send(json.dumps(sendData))
+            else:     
+                print "delete socket!"
+                del socketsList[i]
+        continue;
 
 @app.route('/')
 def index():
-    thread = Thread(target=listenServer)
-    thread.start()
     thread2 = Thread(target=sendQueue)
     thread2.start()
-    connectInitial()
     return render_template('index.html')
 
 @socketio.on('connect')
@@ -297,10 +341,7 @@ def textRequest():
 @socketio.on('my connect', namespace='/test')
 def test_message(message):
     global nbString
-    print socketio.rooms
     #join_room(serverId)
-    print "now the room is :"
-    print socketio.rooms
     emit('my connect', {'data': message['data'],'nbString':nbString})
 
 
@@ -328,7 +369,6 @@ def log_send(message):
     #socketio.emit('my change',{'changedString':message['changedString'],'startCursor':message['startCursor'],'endCursor':message['endCursor'],'version_num':1})
 
     #to other servers
-    newClkPort = clkPort(clock,serverId)
     logMap[json.dumps({'clock':clock,'id':serverId})] = 0
     broadcast_server("server_log",newlog)
 
@@ -337,6 +377,9 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         sys.exit(0)
     serverId = int(sys.argv[1])
+    thread = Thread(target=listenServer)
+    thread.start()
+    connectInitial()
     socketio.run(app,host='0.0.0.0',port=serverId+10000)
 
 
