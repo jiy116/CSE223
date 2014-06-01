@@ -8,16 +8,18 @@ import json
 import threading
 #from socketIO_client import BaseNamespace,SocketIO_client
 from threading import Thread
-from flask import Flask, render_template, session, request,jsonify,request,current_app
+from flask import Flask, render_template, session, request, jsonify, request, current_app, redirect, url_for
 from flask.ext.socketio import SocketIO, emit, join_room, leave_room
 from Heap import BinHeap
 from multiprocessing.dummy import Pool as ThreadPool
-from clkPort import clkPort
 
 app = Flask(__name__)
 app.debug = False
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app)
+
+#set socket timeout
+
 
 #content
 nbString = ""
@@ -49,6 +51,9 @@ sendThreshold = 0
 
 #the log list
 logList = BinHeap()
+
+#client num
+currClient = 0
 
 #the thread class
 class MyThread(threading.Thread):
@@ -345,20 +350,26 @@ def broadcast_server(action,log):
 
 @app.route('/')
 def index():
-    thread2 = Thread(target=sendQueue)
-    thread2.start()
     return render_template('index.html')
 
-@socketio.on('connect')
+@socketio.on('connect', namespace='/test')
 def textRequest():
     print "try to get text!"
-    emit('server_connect',{'port' : serverId})
+    #emit('server_connect',{'port' : serverId})
+
+@socketio.on('disconnect', namespace='/test')
+def leave():
+    global currClient
+    currClient -= 1
+    print "one connection leaves!"
 
 
 @socketio.on('my connect', namespace='/test')
 def test_message(message):
     global nbString
+    global currClient
     #join_room(serverId)
+    currClient += 1
     emit('my connect', {'data': message['data'],'nbString':nbString})
 
 
@@ -378,9 +389,10 @@ def log_send(message):
     logs[version_num] = log
 
     #update the vector clock and save it in the log list
-    clock[serverId] = clock[serverId] + 1
     newlog = {'changedString':message['changedString'],'startCursor': message['startCursor'],
               'endCursor': message['endCursor'],'vClock': clock,'deliverable':False,'id':serverId}
+
+    clock[serverId] += 1
 
     #if only one server
     if sendThreshold == 0:
@@ -401,6 +413,8 @@ if __name__ == '__main__':
     serverId = int(sys.argv[1])
     thread = Thread(target=listenServer)
     thread.start()
+    thread2 = Thread(target=sendQueue)
+    thread2.start()
     connectInitial()
     socketio.run(app,host='0.0.0.0',port=serverId+10000)
 

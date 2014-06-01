@@ -14,10 +14,14 @@ class BinHeap:
 		print(self.heaplist)
 
 	def add(self, val):
-		self.dic[json.dumps({'clock':val['vClock'], 'id':val['id']})] = val
-		print "add:"
-		print val
+		val2 = val
+		print "add before:"
+		print self.heaplist
 		self.heaplist.append(val)
+		self.dic[json.dumps({'clock':val2['vClock'], 'id':val2['id']})] = val2['deliverable']
+		#self.heaplist = self.heaplist + [val]
+		print val
+		print self.dic
 		index = self.size
 		while(index > 0):
 			newer = self.clkCompare(self.heaplist[index]['vClock'], self.heaplist[(index+1) / 2 - 1]['vClock']) 
@@ -26,15 +30,19 @@ class BinHeap:
 			if not newer:
 				self.swap(index, (index+1) / 2 - 1)
 			index = (index+1) / 2 - 1
+		print "after add"
+		print self.heaplist
 		self.size += 1
 
 	def remove(self):
-		if (self.size == 0):
+		if (self.size <= 0):
 			return
 		del self.dic[json.dumps({'clock':self.heaplist[0]['vClock'],'id':self.heaplist[0]['id']})]
 		result = self.heaplist.pop(0)
 		print "remove:"
 		print result
+		print self.dic
+		print self.heaplist
 		self.size -= 1
 		if (self.size == 0):
 			return
@@ -64,7 +72,7 @@ class BinHeap:
 
 	def isDeliverable(self):
 		if self.size != 0:
-			return self.heaplist[0]['deliverable'] == True
+			return self.dic[json.dumps({'clock':self.heaplist[0]['vClock'],'id':self.heaplist[0]['id']})]
 		else:
 			return False
 

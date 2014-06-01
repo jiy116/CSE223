@@ -1,18 +1,21 @@
-#keeper
+from gevent import monkey
+monkey.patch_all()
 
 import time
 import sys
 import socket
 import json
-import clkPort
+import threading
 #from socketIO_client import BaseNamespace,SocketIO_client
 from threading import Thread
+from flask import Flask, render_template, session, request,jsonify,request,current_app
+from flask.ext.socketio import SocketIO, emit, join_room, leave_room
 from Heap import BinHeap
-from multiprocessing.dummy import Pool as ThreadPool
 
 
 keeperId = 0
 ports = [0,1,2]
+serverMax = 3
 
 count = 0
 
@@ -21,6 +24,11 @@ vectorClock = [0,0,0]
 #the socket to other servers
 socketsList = {}
 
+#the list to do the load balancing
+loadList = [0]*serverMax
+
+#connect status
+disconnect = False
 
 #dialServer
 def dialServer(port):
@@ -81,7 +89,6 @@ def sendClock():
             pass
 
 
-
 def initialConnect():
 
     global socketsList
@@ -99,88 +106,13 @@ def initialConnect():
             pass
         socketsList[port]=client
 
-
-if __name__ == "__main__":
-    main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#the function to do receive connect from clients
+@socketio.on('keeper_server')
+    def returnPort():
+        pass
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         sys.exit(0)
-    serverId = int(sys.argv[1])
-    socketio.run(app,host='0.0.0.0',port=serverId+10000)
+    keeperId = int(sys.argv[1])
+    socketio.run(app,host='0.0.0.0',port=keeperId+8000)

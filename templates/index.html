@@ -122,6 +122,10 @@
             socket.emit('my connect', {data: 'I\'m connected!'});
         });
 
+        socket.on('disconnect',function() {
+            
+        });
+
 
         socket.on('my connect', function(msg) {
             //$('#log1').append('<br>Received #' + msg.count + ': ' + msg.data);
