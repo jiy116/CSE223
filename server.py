@@ -98,11 +98,12 @@ def sendQueue():
                 logList.remove()
                 waitCounter = 0
             else:
-
+                #if not ack yet
+                pass
 
 #ask other servers to know if the logs can be commit
-def askCommit():
-    
+#def askCommit(id):
+#    pass
 
 def checkLog():
     global logList
@@ -223,7 +224,7 @@ def serverConn(connection):
                         except:
                             continue
                     else:
-                        #coordinator dies
+                        #askCommit(json.dumps({'clock':buf['vClock'],'id':buf['id']}))
                         continue
 
             elif str(buf['action']) == "ack":

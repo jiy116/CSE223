@@ -32,6 +32,9 @@
     //the logs stored in client side, used for the disconnect func
     var clientLog = []
 
+    //the socketio and its
+    var keeper_socket;
+
     //the class used to store the transferred data
     Data = function(changedString,lastCursor,currCursor,version_num) {
         this.changedString = changedString;
@@ -128,50 +131,106 @@
         version_num = data.version_num;
     }
 
-    $(document).ready(function(){
+    //try to connect to the server returned from the keeper
+    serverConnected = function(port){
+        //keeper_socket.options.port = port+10000;
+        keeper_socket = io.connect('http://' + document.domain + ':' + (port+10000) + namespace,{'reconnect':false});
 
-        namespace = '/test'; // change to an empty string to use the global namespace
-        namespaceK = '/keeper';
+        //location.replace("http://0.0.0.0:" + (port+10000));
 
-        //reconnect other keepers with different port
-        connectKeeper = function(counter){
-            keeper_socket.options.port = counter%keeperNum + 8000;
-            return keeper_socket.connect();
-        }
+        keeper_socket.on('connect',function(){
+            $('#log1').append('successfully');
+            keeper_socket.emit('my connect', {data: 'I\'m connected!'});
+        })
 
-        var i = 0;
-        var SorK = 0;
+        keeper_socket.on('my connect', function(msg) {
+            //$('#log1').append('<br>Received #' + msg.count + ': ' + msg.data);
+            //get the initial text
+            $('#text1').val(msg.nbString);
+            nbString = msg.nbString;
+            lastCursor = len(nbString);
+        })
 
+
+        keeper_socket.on('disconnect',function(){
+            return keeperConnected(0);
+        })
+
+        keeper_socket.on('my change', function(msg) {
+            //alert(msg.changedString+msg.startCursor+msg.endCursor);
+            data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);    
+            /*heap.push(data)
+            //alert(heap.getMin().lClock-lClock);
+            if(heap.size()!=0){
+                min_data = heap.getMin();
+                while(min_data.lClock == (lClock+1)){
+                    updateText(heap.pop());
+                    if(heap.size()==0){
+                        break;
+                    }
+                }
+            }*/
+            updateText(data)
+        })
+
+        /* 
+        @textarea change event will activate this method
+        */
+        $('textarea#text1').bind('input propertychange',function(){
+            var getData = getChanged(document.getElementById('text1'));
+            $('#text1').val(nbString);
+            keeper_socket.emit('my log',{changedString:getData.changedString, 
+                                  startCursor: getData.startCursor,
+                                  endCursor: getData.endCursor,                
+                                  version: getData.version_num });
+        });
+
+
+        //the three mouse events
+        $('textarea#text1').bind('click',function(){
+            onmouseClick(document.getElementById('text1'));
+        });
+
+        $('textarea#text1').bind('mousedown',function(){
+            onmouseDown(document.getElementById('text1'));
+        });
+
+        $('textarea#text1').bind('mouseup',function(){
+            onmouseUp(document.getElementById('text1'));
+        });
+                //return keeper_socket.connect();
+            //}
+    }
+
+    //try to connect to a keeper to get a new port
+    keeperConnected = function(port){
         //first time
-        var keeper_socket = io.connect('http://' + document.domain + ':' + location.port + namespace,{'reconnect':false});
+        keeper_socket = io.connect('http://' + document.domain + ':' + location.port + namespace,{'reconnect':false});
         //var socket = = io.connect('http://' + document.domain + ':' + 5000 + namespaceK,{'reconnect':false});
         
         //connect successfully, set i to port
         keeper_socket.on('connect', function(){
-            if (SorK == 0){
-                $('#log1').append('<br>get keeper!');
-                keeper_socket.emit('keeper_server');
-                port = i;
-                i = 0;
-                SorK = 1;
-            }
-            else{
-                $('#log1').append('<br>connect to server!');
-                socket.emit('my connect', {data: 'I\'m connected!'});
-                SorK = 0;
-            }
+            $('#log1').append('<br>get keeper!');
+            keeper_socket.emit('keeper_server');
         });
 
-        keeper_socket.on('reconnect', function(){
-            $('#log1').append('<br>connect to server!');
-            socket.emit('my connect', {data: 'I\'m connected!'});
-            SorK = 0;
-        });
+        //disconnect from the 
+        keeper_socket.on('disconnect', function(){
+
+        })
 
         //fail to connect
         keeper_socket.on('connect_failed', function(){
-            if (i != 0) {i++;}
-            return connectKeeper(i);
+            if (port != 0) {port++;}
+
+            //if all keepers can not be connected
+            if (port >= keeperNum){
+                return disconnectedMode()
+            }
+            //try another port
+            else{
+                return keeperConnected(port);
+            }
         });
 
         //get the server port
@@ -183,73 +242,23 @@
                 //keeper_socket.close();
             //}
             //else{
-            $('#log1').append('<br>another port!' + port);
+            $('#log1').append('<br>another port! ' + port);
             //socket.options.port = port+5000;
             keeper_socket.disconnect();
-            //keeper_socket.options.port = port+10000;
-            keeper_socket = io.connect('http://' + document.domain + ':' + (port+10000) + namespace,{'reconnect':false});
 
-            //location.replace("http://0.0.0.0:" + (port+10000));
-
-            keeper_socket.on('connect',function(){
-                $('#log1').append('successfully');
-                keeper_socket.emit('my connect', {data: 'I\'m connected!'});
-            })
-
-            keeper_socket.on('my connect', function(msg) {
-                //$('#log1').append('<br>Received #' + msg.count + ': ' + msg.data);
-                //get the initial text
-                $('#text1').val(msg.nbString);
-                nbString = msg.nbString;
-                lastCursor = len(nbString);
-            });
-    
-
-            keeper_socket.on('my change', function(msg) {
-                //alert(msg.changedString+msg.startCursor+msg.endCursor);
-                data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);    
-                /*heap.push(data)
-                //alert(heap.getMin().lClock-lClock);
-                if(heap.size()!=0){
-                    min_data = heap.getMin();
-                    while(min_data.lClock == (lClock+1)){
-                        updateText(heap.pop());
-                        if(heap.size()==0){
-                            break;
-                        }
-                    }
-                }*/
-                updateText(data)
-            });
-    
-            /* 
-            @textarea change event will activate this method
-            */
-            $('textarea#text1').bind('input propertychange',function(){
-                var getData = getChanged(document.getElementById('text1'));
-                $('#text1').val(nbString);
-                keeper_socket.emit('my log',{changedString:getData.changedString, 
-                                      startCursor: getData.startCursor,
-                                      endCursor: getData.endCursor,                
-                                      version: getData.version_num });
-            });
-
-
-            //the three mouse events
-            $('textarea#text1').bind('click',function(){
-                onmouseClick(document.getElementById('text1'));
-            });
-
-            $('textarea#text1').bind('mousedown',function(){
-                onmouseDown(document.getElementById('text1'));
-            });
-
-            $('textarea#text1').bind('mouseup',function(){
-                onmouseUp(document.getElementById('text1'));
-            });
-                    //return keeper_socket.connect();
-                //}
+            return serverConnected(port);        
         });
+    }
+
+    //the disconnected mode
+    disconnectedMode = function(){
+
+    }
+
+    $(document).ready(function(){
+
+        //try to connect to keepers
+        keeperConnected(0);
 
         //connect to server
         //keeper_socket.on('connect', function() {
