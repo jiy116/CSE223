@@ -6,6 +6,7 @@ import sys
 import socket
 import json
 import threading
+import copy
 #from socketIO_client import BaseNamespace,SocketIO_client
 from threading import Thread
 from flask import Flask, render_template, session, request, jsonify, request, current_app, redirect, url_for
@@ -102,8 +103,8 @@ def sendQueue():
                 pass
 
 #ask other servers to know if the logs can be commit
-#def askCommit(id):
-#    pass
+def askCommit(id):
+    pass
 
 def checkLog():
     global logList
@@ -350,9 +351,9 @@ def connectInitial():
     global clock
 
     tempString = ""
-    tempclock = [0]*3
+    tempclock = [0]*serverMax
     changed = False
-    for x in xrange(0,3):
+    for x in xrange(0,serverMax):
         if x == serverId:
             continue
         else:
@@ -385,8 +386,6 @@ def connectInitial():
     if changed == True:
         update_clock(tempclock)
         nbString = tempString
-
-
 
 
 #update the clock
@@ -464,10 +463,11 @@ def log_send(message):
     logs[version_num] = log
 
     #update the vector clock and save it in the log list
-    newlog = {'changedString':message['changedString'],'startCursor': message['startCursor'],
-              'endCursor': message['endCursor'],'vClock': clock,'deliverable':False,'id':serverId}
-
     clock[serverId] += 1
+    refClock = copy.deepcopy(clock)
+    newlog = {'changedString':message['changedString'],'startCursor': message['startCursor'],
+              'endCursor': message['endCursor'],'vClock': refClock,'deliverable':False,'id':serverId}
+
 
     #if only one server
     if sendThreshold == 0:

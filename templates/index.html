@@ -32,8 +32,11 @@
     //the logs stored in client side, used for the disconnect func
     var clientLog = []
 
-    //the socketio and its
+    //the socketio
     var keeper_socket;
+
+    //the server port
+    var server;
 
     //the class used to store the transferred data
     Data = function(changedString,lastCursor,currCursor,version_num) {
@@ -140,7 +143,8 @@
 
         keeper_socket.on('connect',function(){
             $('#log1').append('successfully');
-            keeper_socket.emit('my connect', {data: 'I\'m connected!'});
+            keeper_socket.emit('my connect', {data: clientLog});
+            clientLog = [];
         })
 
         keeper_socket.on('my connect', function(msg) {
@@ -205,7 +209,7 @@
     //try to connect to a keeper to get a new port
     keeperConnected = function(port){
         //first time
-        keeper_socket = io.connect('http://' + document.domain + ':' + location.port + namespace,{'reconnect':false});
+        keeper_socket = io.connect('http://' + document.domain + ':' + port + namespace,{'reconnect':false});
         //var socket = = io.connect('http://' + document.domain + ':' + 5000 + namespaceK,{'reconnect':false});
         
         //connect successfully, set i to port
@@ -214,9 +218,15 @@
             keeper_socket.emit('keeper_server');
         });
 
-        //disconnect from the 
+        //disconnect from the keeper
         keeper_socket.on('disconnect', function(){
-
+            //before get port
+            if (pos == null){
+                return keeperConnected(port+1);
+            }
+            else{
+                return;
+            }
         })
 
         //fail to connect
@@ -235,30 +245,54 @@
 
         //get the server port
         keeper_socket.on('server_port',function(msg){
-            port = msg.pos;
+            pos = msg.pos;
+            server = pos;
             //if (socket == null) {
             //  $('#log1').append('<br>new port!');
                 //socket = io.connect('http://' + document.domain + ':' + (port+5000) + namespace, {'reconnect':false});
                 //keeper_socket.close();
             //}
             //else{
-            $('#log1').append('<br>another port! ' + port);
+            $('#log1').append('<br>another port! ' + pos);
             //socket.options.port = port+5000;
             keeper_socket.disconnect();
 
-            return serverConnected(port);        
+            return serverConnected(pos);        
         });
     }
 
-    //the disconnected mode
+    //the disconnected mode, show the change immediately but store the logs
     disconnectedMode = function(){
+        $('#log1').append('<br>disconnected!');
 
+        $('textarea#text1').bind('input propertychange',function(){
+            var getData = getChanged(document.getElementById('text1'));
+            //$('#text1').val(nbString);
+            data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);
+            clientLog.append(data);
+        });
+
+        //the three mouse events
+        $('textarea#text1').bind('click',function(){
+            onmouseClick(document.getElementById('text1'));
+        });
+
+        $('textarea#text1').bind('mousedown',function(){
+            onmouseDown(document.getElementById('text1'));
+        });
+
+        $('textarea#text1').bind('mouseup',function(){
+            onmouseUp(document.getElementById('text1'));
+        });
+
+        //set timeout to enter the keeper mode
+        setTimeout(keeperConnected(0),10);
     }
 
     $(document).ready(function(){
 
         //try to connect to keepers
-        keeperConnected(0);
+        keeperConnected(location.port);
 
         //connect to server
         //keeper_socket.on('connect', function() {
