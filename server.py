@@ -94,7 +94,8 @@ def sendQueue():
                 topLog = logList.peek()
                 updateText(topLog)
                 #otherApp = SocketIO(current_app)
-                socketio.emit('my change',{'changedString':topLog['changedString'],'startCursor':topLog['startCursor'],'endCursor':topLog['endCursor'],'version_num':1},
+                socketio.emit('my change',{'changedString':topLog['changedString'],'startCursor':topLog['startCursor'],'endCursor':topLog['endCursor'],
+                                           'vClock':topLog['vClock'],'version_num':1}
                               namespace='/test')
                 logList.remove()
                 waitCounter = 0
