@@ -106,10 +106,10 @@ class BinHeap:
 				else:
 					break
 
-	def updatePriority(self, target, priority):#target is a dic {'log':log, 'priority':num}
+	def updatePriority(self, vClock, port, priority):#target is a dic {'log':log, 'priority':num}
 		isFound = False
 		for val in self.heaplist:
-			if self.isEqual(val, target):
+			if (val['log']['vClock'] == vClock) and (val['log']['id'] == port): 
 				isFound = True
 				index = self.heaplist.index(val)
 				self.heaplist.remove(val)
@@ -119,8 +119,8 @@ class BinHeap:
 					# print self.heaplist
 					self.percDown(index)
 					print self.size
-				target['priority'] = priority
-				self.addi(target)
+				val['priority'] = priority
+				self.addi(val)
 		if not isFound:
 			print "cannot find the target log"
 
@@ -138,7 +138,7 @@ class BinHeap:
 			return
 		#print("peek")
 		#print self.heaplist[0]
-		return self.heaplist[0]
+		return self.heaplist[0]['log']
 
 	def isEmpty(self):
 		return self.size == 0
@@ -206,7 +206,7 @@ if __name__ == "__main__":
 	myheap.printheap()
 	log = {'vClock': [3,2,3], 'id': 5}
 	dic1 = {'log': log, 'priority':2 }
-	myheap.updatePriority(dic1, 3)
+	myheap.updatePriority(dic1['log']['vClock'],dic1['log']['id'],3)
 	myheap.printheap()
 	myheap.remove()
 	myheap.printheap()

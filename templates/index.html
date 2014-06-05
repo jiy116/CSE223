@@ -33,10 +33,13 @@
     var clientLog = []
 
     //the socketio
-    var keeper_socket;
+    var keeper_socket = null;
 
     //the server port
-    var server;
+    var server = -2;
+
+    //the namespace
+    var namespace = '/test';
 
     //the class used to store the transferred data
     Data = function(changedString,lastCursor,currCursor,version_num) {
@@ -137,7 +140,8 @@
     //try to connect to the server returned from the keeper
     serverConnected = function(port){
         //keeper_socket.options.port = port+10000;
-        keeper_socket = io.connect('http://' + document.domain + ':' + (port+10000) + namespace,{'reconnect':false});
+        var disconn = false;
+        keeper_socket = new io.connect('http://' + document.domain + ':' + (port+10000) + namespace,{'reconnect':false});
 
         //location.replace("http://0.0.0.0:" + (port+10000));
 
@@ -151,12 +155,21 @@
             //$('#log1').append('<br>Received #' + msg.count + ': ' + msg.data);
             //get the initial text
             $('#text1').val(msg.nbString);
+            $('#log1').append('<br>get new text: '+msg.nbString);
             nbString = msg.nbString;
             lastCursor = len(nbString);
         })
 
 
         keeper_socket.on('disconnect',function(){
+            $('#log1').append('<br>disconnect!');
+            if(!disconn){
+                $('#log1').append('<br>keeper disconnect!');
+                disconn = true;
+                keeper_socket.disconnect();
+                return;             
+            }
+            keeper_socket = null;  
             return keeperConnected(0);
         })
 
@@ -209,7 +222,11 @@
     //try to connect to a keeper to get a new port
     keeperConnected = function(port){
         //first time
-        keeper_socket = io.connect('http://' + document.domain + ':' + port + namespace,{'reconnect':false});
+        //if(keeper_socket != null){
+        //    keeper_socket.disconnect();
+        //}
+        $('#log1').append('<br>begin keeper! '+ keeper_socket);
+        keeper_socket = new io.connect('http://' + document.domain + ':' + (port+8000) + namespace,{'reconnect':false,'force new connection':true});
         //var socket = = io.connect('http://' + document.domain + ':' + 5000 + namespaceK,{'reconnect':false});
         
         //connect successfully, set i to port
@@ -221,17 +238,20 @@
         //disconnect from the keeper
         keeper_socket.on('disconnect', function(){
             //before get port
-            if (pos == null){
+            $('#log1').append('<br>disconnect keeper!');
+            if (server == -2){
                 return keeperConnected(port+1);
             }
             else{
-                return;
+                ;
             }
         })
 
         //fail to connect
         keeper_socket.on('connect_failed', function(){
-            if (port != 0) {port++;}
+            //if (port != 0) {port++;}
+
+            port++;
 
             //if all keepers can not be connected
             if (port >= keeperNum){
@@ -239,6 +259,7 @@
             }
             //try another port
             else{
+                $('#log1').append('<br>try port: !'+port);
                 return keeperConnected(port);
             }
         });
@@ -256,7 +277,7 @@
             $('#log1').append('<br>another port! ' + pos);
             //socket.options.port = port+5000;
             keeper_socket.disconnect();
-
+            keeper_socket = null;
             return serverConnected(pos);        
         });
     }
@@ -292,7 +313,7 @@
     $(document).ready(function(){
 
         //try to connect to keepers
-        keeperConnected(location.port);
+        keeperConnected(location.port-8000);
 
         //connect to server
         //keeper_socket.on('connect', function() {

@@ -50,7 +50,7 @@ vectorClock = [0,0,0]
 socketsList = {}
 
 #the list to do the load balancing
-loadList = [0]*serverMax
+loadList = [9999999]*serverMax
 
 #connect status
 disconnect = False
@@ -67,11 +67,21 @@ def dialServer(port):
         try:
             client.send(json.dumps(sendData))
         except:
+
+            newclient = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            newclient.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
             address =('127.0.0.1',port+5000)
-            client.connect(address)
-            client.send(json.dumps({'role':'keeper'}))
-            #print client.recv(1024)
-            client.send(json.dumps(sendData))
+            newclient.connect(address)
+            newclient.send(json.dumps({'role':'keeper'}))
+            newclient.recv(1024)
+            socketsList[port] = newclient
+            sendData = {'action':'askClock'}
+            newclient.send(json.dumps(sendData))
+            data = json.loads(newclient.recv(1024))
+            vectorClock[port] = int(data['clock'])
+
+            loadList[port] = int(data['clientNum'])
+            return
         
         data = json.loads(client.recv(1024))
         vectorClock[port] = int(data['clock'])
@@ -79,6 +89,7 @@ def dialServer(port):
         return
     except:
         vectorClock[port] = -1
+        loadList[port] = 999999999
         return
 
 
@@ -91,7 +102,7 @@ def keeperWork():
     initialConnect()
 
     while True:
-        time.sleep(0.5)
+        time.sleep(1.5)
         #print vectorClock
         thread_arr = []
         for port in ports:
@@ -147,6 +158,10 @@ def initialConnect():
 def index():
     return render_template('index.html')
 
+@socketio.on('connect',namespace='/test')
+def newClient():
+    print "new client!"
+
 
 #the function to do receive connect from clients
 @socketio.on('keeper_server', namespace='/test')
@@ -157,5 +172,9 @@ def returnPort():
 
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        sys.exit(0)
+    keeperId = int(sys.argv[1])
     MyThread1().start()
+
     socketio.run(app,host='0.0.0.0',port=8000+keeperId)

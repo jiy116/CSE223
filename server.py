@@ -48,6 +48,7 @@ logs = {}
 
 #a map to indicate if the log should be sent
 logMap = {}
+logPrio = {}
 otherLog = {}
 sendThreshold = 0
 
@@ -86,21 +87,15 @@ def sendQueue():
     #with app.app_context():
     global logList
     global socketio
-    while True:
-        time.sleep(0.1)
-        if logList.isEmpty() == False:
+    while (not logList.isEmpty()) and (logList.isDeliverable()) :
             #if deliverable, send it to all 
-            if logList.isDeliverable() == True:
-                topLog = logList.peek()
-                updateText(topLog)
-                #otherApp = SocketIO(current_app)
-                socketio.emit('my change',{'changedString':topLog['changedString'],'startCursor':topLog['startCursor'],'endCursor':topLog['endCursor'],
-                                           'vClock':topLog['vClock'],'version_num':1}, namespace='/test')
-                logList.remove()
-                waitCounter = 0
-            else:
-                #if not ack yet
-                pass
+        topLog = logList.peek()
+        updateText(topLog)
+        #otherApp = SocketIO(current_app)
+        socketio.emit('my change',{'changedString':topLog['changedString'],'startCursor':topLog['startCursor'],'endCursor':topLog['endCursor'],
+                                   'vClock':topLog['vClock'],'version_num':1}, namespace='/test')
+        logList.remove()
+        waitCounter = 0
 
 #ask other servers to know if the logs can be commit
 def askCommit(id):
@@ -180,21 +175,21 @@ def listenServer():
 def serverConn(connection):
     connection.sendall('server')
     global sendThreshold
-    print "server receive begin!"
-    print serverId
+    #print "server receive begin!"
+    #print serverId
     sendThreshold += 1
     while True:
         try:
             recvdata = connection.recv(1024)
             if recvdata == None:
-                print "empty recv!"
+                #print "empty recv!"
                 continue
             buf = json.loads(recvdata)
 
-            print "get buf!"
-            print serverId
+            #print "get buf!"
+            #print serverId
 
-            print "action is " + buf['action']
+            #print "action is " + buf['action']
 
             #send the string to other server
             if str(buf['action']) == "requestString":
@@ -208,15 +203,20 @@ def serverConn(connection):
 
             #add the log to self queue and send back the acknowledgement
             elif str(buf['action']) == "server_log":
-                logList.add(buf['log'])
+
+                logList.add({'log':buf['log']})
+
+                locPrio = logList.getPriority()
+
                 #newClkPort = clkPort(buf['log']['vClock'],buf['log']['id'])
-                data = {'action':"ack",'vClock':buf['log']['vClock'],'id':buf['log']['id']}
+                data = {'action':"ack",'vClock':buf['log']['vClock'],'id':buf['log']['id'],'priority':locPrio}
 
                 #update clock
                 update_clock(buf['log']['vClock'])
 
                 try:
                     socketsList[buf['log']['id']].sendall(json.dumps(data))
+
                 except:
                     succ = reConn(buf['log']['id'],2)
                     if succ:
@@ -229,16 +229,32 @@ def serverConn(connection):
                         continue
 
             elif str(buf['action']) == "ack":
+                print 'ack'
                 logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] = logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]+1
+
+                if logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})] < buf['priority']:
+                    logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})] = buf['priority']
                 #if the num is enough
+
                 if logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})] >= sendThreshold:
+
                     logList.setDeliverable(json.dumps({'clock':buf['vClock'],'id':buf['id']}))
+                    locPrio = logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
+                    logList.updatePriority(buf['vClock'],buf['id'],locPrio)
+                    
+
                     del logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
-                    broadcast_server("commit",{'vClock':buf['vClock'],'id':buf['id']})
+                    del logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
+                    broadcast_server("commit",{'vClock':buf['vClock'],'id':buf['id'],'priority':locPrio})
+                    sendQueue()
 
             #receive the commit command from the coordinator
             elif str(buf['action']) == "commit":
+                print 'commit'
+                print buf
+                logList.updatePriority(buf['log']['vClock'],buf['log']['id'],buf['log']['priority'])
                 logList.setDeliverable(json.dumps({'clock':buf['log']['vClock'],'id':buf['log']['id']}))
+                sendQueue()
 
         except:
             print "connection close!"
@@ -260,6 +276,7 @@ def keeperConn(connection):
                 continue
             buf = json.loads(recvdata)
             if str(buf['action']) == "askClock":
+                print clock
                 connection.sendall(json.dumps({'clock':clock[serverId],'clientNum':currClient}))
             
             elif str(buf['action']) == "setClock":
@@ -351,7 +368,7 @@ def connectInitial():
     global clock
 
     tempString = ""
-    tempclock = [0]*serverMax
+    tempclock = [-1]*serverMax
     changed = False
     for x in xrange(0,serverMax):
         if x == serverId:
@@ -375,7 +392,10 @@ def connectInitial():
                 sendData = {'action':"requestString",'id':serverId}
                 client.send(json.dumps(sendData))
                 recvData = json.loads(client.recv(1024))
+                print recvData['vclock']
+                print clock
                 if clock_compare(tempclock,recvData['vclock']) == False:
+                    print 'get here'
                     tempclock = recvData['vclock']
                     tempString = recvData['text']
                     changed = True
@@ -386,6 +406,7 @@ def connectInitial():
     if changed == True:
         update_clock(tempclock)
         nbString = tempString
+        print "get "+nbString
 
 
 #update the clock
@@ -466,17 +487,20 @@ def log_send(message):
     clock[serverId] += 1
     refClock = copy.deepcopy(clock)
     newlog = {'changedString':message['changedString'],'startCursor': message['startCursor'],
-              'endCursor': message['endCursor'],'vClock': refClock,'deliverable':False,'id':serverId}
-
+              'endCursor': message['endCursor'],'vClock': refClock,'deliverable':False,'id':serverId,'version_num':1}
 
     #if only one server
     if sendThreshold == 0:
-        newlog['deliverable'] = True
+        updateText(newlog)
+        socketio.emit('my change',newlog, namespace='/test')
+        return
 
-    logList.add(newlog)
+    logList.add({'log':newlog})
 
+    locPrio = logList.getPriority()
+    logPrio[json.dumps({'clock':clock,'id':serverId})] = locPrio
+    
     #socketio.emit('my change',{'changedString':message['changedString'],'startCursor':message['startCursor'],'endCursor':message['endCursor'],'version_num':1})
-
     #to other servers
     logMap[json.dumps({'clock':clock,'id':serverId})] = 0
     broadcast_server("server_log",newlog)
@@ -488,8 +512,8 @@ if __name__ == '__main__':
     serverId = int(sys.argv[1])
     thread = Thread(target=listenServer)
     thread.start()
-    thread2 = Thread(target=sendQueue)
-    thread2.start()
+    #thread2 = Thread(target=sendQueue)
+    #thread2.start()
     connectInitial()
     socketio.run(app,host='0.0.0.0',port=serverId+10000)
 
