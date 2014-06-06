@@ -121,6 +121,9 @@ class BinHeap:
 					print self.size
 				val['priority'] = priority
 				self.addi(val)
+				#set priority to a bigger one
+				if self.priority < priority:
+					self.priority = priority
 		if not isFound:
 			print "cannot find the target log"
 

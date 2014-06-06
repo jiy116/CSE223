@@ -102,6 +102,23 @@
         return data;
     }
 
+    disconnectLog = function(node){
+        var textarea = document.getElementById('text1');
+        var currCursor = getCaret(node);
+        cur = node.value;
+        var changedString = null;  
+        if(lastCursor < currCursor){
+            changedString = cur.substring(lastCursor,currCursor);
+        } else {
+            changedString = cur.substring(currCursor,lastCursor);
+        }
+
+        data = new Data(changedString,lastCursor,currCursor,version_num);
+
+        lastCursor = currCursor;
+
+        return data;
+    }
 
     onmouseClick = function(node){
         lastCursor = getCaret(node);
@@ -141,12 +158,13 @@
     serverConnected = function(port){
         //keeper_socket.options.port = port+10000;
         var disconn = false;
-        keeper_socket = new io.connect('http://' + document.domain + ':' + (port+10000) + namespace,{'reconnect':false});
+        keeper_socket = new io.connect('http://' + document.domain + ':' + (port+10000) + namespace,{'reconnect':false,'force new connection':true,'try multiple transports':true,'connect timeout':5000});
 
         //location.replace("http://0.0.0.0:" + (port+10000));
 
         keeper_socket.on('connect',function(){
             $('#log1').append('successfully');
+            status = 1;
             keeper_socket.emit('my connect', {data: clientLog});
             clientLog = [];
         })
@@ -163,6 +181,7 @@
 
         keeper_socket.on('disconnect',function(){
             $('#log1').append('<br>disconnect!');
+            status = 0;
             if(!disconn){
                 $('#log1').append('<br>keeper disconnect!');
                 disconn = true;
@@ -187,19 +206,21 @@
                     }
                 }
             }*/
-            updateText(data)
+            updateText(data);
         })
 
         /* 
         @textarea change event will activate this method
         */
         $('textarea#text1').bind('input propertychange',function(){
-            var getData = getChanged(document.getElementById('text1'));
-            $('#text1').val(nbString);
-            keeper_socket.emit('my log',{changedString:getData.changedString, 
+            if (status == 1) {
+                var getData = getChanged(document.getElementById('text1'));
+                $('#text1').val(nbString);
+                keeper_socket.emit('my log',{changedString:getData.changedString, 
                                   startCursor: getData.startCursor,
                                   endCursor: getData.endCursor,                
                                   version: getData.version_num });
+            }; 
         });
 
 
@@ -226,7 +247,9 @@
         //    keeper_socket.disconnect();
         //}
         $('#log1').append('<br>begin keeper! '+ keeper_socket);
-        keeper_socket = new io.connect('http://' + document.domain + ':' + (port+8000) + namespace,{'reconnect':false,'force new connection':true});
+        keeper_socket = new io.connect('http://' + document.domain + ':' + (port+8000) + namespace,{'reconnect':false,'force new connection':true,'try multiple transports':true,'connect timeout':5000});
+        //keeper_socket.publish('reconnecting', keeper_socket.reconnectionDelay, keeper_socket.reconnectionAttempts);
+        //keeper_socket.reconnectionTimer = setTimeout(maybeReconnect, keeper_socket.reconnectionDelay);
         //var socket = = io.connect('http://' + document.domain + ':' + 5000 + namespaceK,{'reconnect':false});
         
         //connect successfully, set i to port
@@ -248,7 +271,7 @@
         })
 
         //fail to connect
-        keeper_socket.on('connect_failed', function(){
+        keeper_socket.on('error', function(){
             //if (port != 0) {port++;}
 
             port++;
@@ -284,13 +307,19 @@
 
     //the disconnected mode, show the change immediately but store the logs
     disconnectedMode = function(){
+        status = 0;
+
         $('#log1').append('<br>disconnected!');
 
         $('textarea#text1').bind('input propertychange',function(){
-            var getData = getChanged(document.getElementById('text1'));
-            //$('#text1').val(nbString);
-            data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);
-            clientLog.append(data);
+            if (status == 0) {
+                $('#log1').append('<br>get changed!');
+                var getData = getChanged(document.getElementById('text1'));
+                $('#log1').append('<br>'+getData.changedString+getData.startCursor+getData.endCursor);
+                //$('#text1').val(nbString);
+                //updateText(getData);
+                clientLog.append(getData);
+            };
         });
 
         //the three mouse events
@@ -307,7 +336,9 @@
         });
 
         //set timeout to enter the keeper mode
-        setTimeout(keeperConnected(0),10);
+        setTimeout(function(){
+            return keeperConnected(0);
+            },10000);
     }
 
     $(document).ready(function(){
