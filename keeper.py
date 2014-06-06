@@ -39,7 +39,7 @@ app.debug = False
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app)
 
-
+validserver = 0
 keeperId = 0
 ports = [0,1,2]
 serverMax = 3
@@ -79,7 +79,6 @@ def dialServer(port):
             newclient.send(json.dumps(sendData))
             data = json.loads(newclient.recv(1024))
             vectorClock[port] = int(data['clock'])
-
             loadList[port] = int(data['clientNum'])
             return
         
@@ -114,7 +113,20 @@ def keeperWork():
         for i in range(serverMax): 
             thread_arr[i].join()
         sendClock()
+        validserver = count_alive()
         
+        
+
+#count how many server alive
+def count_alive():
+    global validserver
+    global verctorClock
+
+    validserver = 0
+    for i in vectorClock:
+    if i!=-1:
+        validserver += 1
+    return validserver
 
 
 #send vectorClock
@@ -166,6 +178,10 @@ def newClient():
 #the function to do receive connect from clients
 @socketio.on('keeper_server', namespace='/test')
 def returnPort():
+    global validserver
+    if validserver == 0:
+        emit('server_port',{'pos':-1})
+        return
     minData = min(loadList)
     port = loadList.index(minData)
     emit('server_port', {'pos': port})

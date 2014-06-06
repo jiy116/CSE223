@@ -64,6 +64,10 @@ stringList = {}
 #the counter for waiting commit
 waitCounter = 0
 
+#the map contains the commited logs
+logCommited = {}
+lastCheck = None
+
 #the thread class
 class MyThread1(threading.Thread):
     def __init__(self,connection):
@@ -90,15 +94,20 @@ def sendQueue():
     while (not logList.isEmpty()) and (logList.isDeliverable()) :
             #if deliverable, send it to all 
         topLog = logList.peek()
+        prior = logList.getPrior()
         updateText(topLog)
         #otherApp = SocketIO(current_app)
         socketio.emit('my change',{'changedString':topLog['changedString'],'startCursor':topLog['startCursor'],'endCursor':topLog['endCursor'],
                                    'vClock':topLog['vClock'],'version_num':1}, namespace='/test')
+        logCommited[json.dumps({'clock':topLog['vClock'],'id':topLog['id']})] = {'log':topLog,'priority':prior}
         logList.remove()
-        waitCounter = 0
 
 #ask other servers to know if the logs can be commit
-def askCommit(id):
+def askCommit(mid):
+    broadcast_server('askCommit',mid)
+
+#combine the logs from disconnect mode
+def combineLog(logList):
     pass
 
 def checkLog():
@@ -115,9 +124,6 @@ def checkLog():
             del socketsList[index]
             continue
     return True
-
-
-
 
 def listenServer():
     global nbString
@@ -167,9 +173,6 @@ def listenServer():
                 
     sock.close()
     del sock
-
-
-
 
 #connection to a server
 def serverConn(connection):
@@ -242,7 +245,6 @@ def serverConn(connection):
                     locPrio = logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
                     logList.updatePriority(buf['vClock'],buf['id'],locPrio)
                     
-
                     del logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
                     del logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
                     broadcast_server("commit",{'vClock':buf['vClock'],'id':buf['id'],'priority':locPrio})
@@ -251,10 +253,13 @@ def serverConn(connection):
             #receive the commit command from the coordinator
             elif str(buf['action']) == "commit":
                 print 'commit'
-                print buf
                 logList.updatePriority(buf['log']['vClock'],buf['log']['id'],buf['log']['priority'])
                 logList.setDeliverable(json.dumps({'clock':buf['log']['vClock'],'id':buf['log']['id']}))
                 sendQueue()
+
+            #other asks for the information of this 
+            elif str(buf['action']) == "askCommit":
+
 
         except:
             print "connection close!"
@@ -321,7 +326,7 @@ def addnewSocket(newId):
         #build a client
         succ = reConn(newId,2)
         return succ
-                
+
     except socket.error,msg:
         return False
 
@@ -442,6 +447,15 @@ def broadcast_server(action,log):
                 del socketsList[i]
         continue;
 
+#the thread to see if the top log has stayed too long
+def checkLate():
+    time.sleep(3)
+    if !logList.isEmpty():
+        if lastCheck == None:
+            lastCheck = logList.peek()
+        elif lastCheck == logList.peek():
+            askCommit(json.dumps({'clock':lastCheck['vClock'],'id':lastCheck['id']}))
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -457,7 +471,6 @@ def leave():
     currClient -= 1
     print "one connection leaves!"
 
-
 @socketio.on('my connect', namespace='/test')
 def test_message(message):
     global nbString
@@ -465,7 +478,10 @@ def test_message(message):
     #join_room(serverId)
     currClient += 1
     print "get new string!"
-    emit('my connect', {'data': message['data'],'nbString':nbString})
+    disconnLogs = message['data']
+    if len(disconnLogs) != 0:
+        combineLog(disconnLogs)
+    emit('my connect', {'nbString':nbString})
 
 
 #get the log from clients
@@ -512,8 +528,8 @@ if __name__ == '__main__':
     serverId = int(sys.argv[1])
     thread = Thread(target=listenServer)
     thread.start()
-    #thread2 = Thread(target=sendQueue)
-    #thread2.start()
+    thread2 = Thread(target=checkLate)
+    thread2.start()
     connectInitial()
     socketio.run(app,host='0.0.0.0',port=serverId+10000)
 

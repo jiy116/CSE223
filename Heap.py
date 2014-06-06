@@ -128,7 +128,7 @@ class BinHeap:
 			print "cannot find the target log"
 
 	def getPriority(self):
-		return self.priority
+		return self.heaplist[0]['priority']
 
 	def isEqual(self, val, target):
 		if val['log'] == target['log']:
@@ -142,6 +142,9 @@ class BinHeap:
 		#print("peek")
 		#print self.heaplist[0]
 		return self.heaplist[0]['log']
+
+	def getPrior(self):
+		return self.heaplist[0]['priority']
 
 	def isEmpty(self):
 		return self.size == 0
