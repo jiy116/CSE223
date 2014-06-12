@@ -124,8 +124,8 @@ def count_alive():
 
     validserver = 0
     for i in vectorClock:
-    if i!=-1:
-        validserver += 1
+        if i!=-1:
+            validserver += 1
     return validserver
 
 

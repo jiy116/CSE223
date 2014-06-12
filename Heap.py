@@ -127,6 +127,12 @@ class BinHeap:
 		if not isFound:
 			print "cannot find the target log"
 
+	def findPriority(clkport):
+		for val in self.heaplist:
+			if json.dumps({'clock':val['log']['vClock'],'id':val['log']['id']}) == clkport:
+				return val['priority']
+		return None
+
 	def getPriority(self):
 		return self.heaplist[0]['priority']
 
@@ -143,9 +149,6 @@ class BinHeap:
 		#print self.heaplist[0]
 		return self.heaplist[0]['log']
 
-	def getPrior(self):
-		return self.heaplist[0]['priority']
-
 	def isEmpty(self):
 		return self.size == 0
 
@@ -154,11 +157,22 @@ class BinHeap:
 			return self.heaplist[0]['log']['deliverable'] == True
 		else:
 			return False
+			
+	def ifDeliverable(self, clkport):
+		try:
+			result = self.dic[clkport]['log']['deliverable'] == True
+			return result
+		except KeyError:
+			return None
+		return self.dic[clkport]['log']['deliverable'] == True
 
 	def setDeliverable(self,clkport):
 		if self.size == 0:
 			return
-		self.dic[clkport]['log']['deliverable'] = True
+		try:
+			self.dic[clkport]['log']['deliverable'] = True
+		except KeyError:
+			pass
 
 	def clkCompare(self, lista, listb):
 		length = len(lista)
@@ -226,13 +240,3 @@ if __name__ == "__main__":
 	myheap.printheap()
 	myheap.remove()
 	myheap.printheap()
-	myheap.remove()
-	myheap.printheap()
-	# myheap.remove()
-	# 	# for i in range(10):
-# 	# 	myheap.add(10-i)
-# 	# myheap.printheap()
-# 	# myheap.remove()
-# 	# myheap.printheap()
-# 	# myheap.remove()
-# 	# myheap.printheap()
