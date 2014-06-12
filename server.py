@@ -366,7 +366,9 @@ def keeperConn(connection):
             buf = json.loads(recvdata)
             if str(buf['action']) == "askClock":
                 print clock
-                connection.sendall(json.dumps({'clock':clock[serverId],'clientNum':currClient}))
+                view = socketsList.keys()
+                view.append(serverId)
+                connection.sendall(json.dumps({'clock':clock[serverId],'clientNum':currClient,'myview':view}))
             
             elif str(buf['action']) == "setClock":
                 retclock = buf['vectorClock']
