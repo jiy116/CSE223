@@ -1,5 +1,9 @@
 from clkPort import clkPort
 import json
+import threading
+
+lock = threading.RLock()
+
 class BinHeap:
 	def __init__(self):
 		self.heaplist = []
@@ -15,6 +19,7 @@ class BinHeap:
 		print(self.heaplist)
 
 	def add(self, val):
+		lock.acquire()
 		val['priority'] = self.priority
 		self.priority += 1
 		self.dic[json.dumps({'clock':val['log']['vClock'], 'id':val['log']['id']})] = val
@@ -33,6 +38,8 @@ class BinHeap:
 				self.swap(index, (index+1) / 2 - 1)
 			index = (index+1) / 2 - 1
 		self.size += 1
+		lock.release()
+
 
 	def addi(self, val):
 		self.dic[json.dumps({'clock':val['log']['vClock'], 'id':val['log']['id']})] = val
@@ -53,7 +60,9 @@ class BinHeap:
 			index = (index+1) / 2 - 1
 		self.size += 1
 
+
 	def remove(self):
+		lock.acquire()
 		if (self.size == 0):
 			return
 		del self.dic[json.dumps({'clock':self.heaplist[0]['log']['vClock'],'id':self.heaplist[0]['log']['id']})]
@@ -62,6 +71,7 @@ class BinHeap:
 		print result
 		self.size -= 1
 		if (self.size == 0):
+			lock.release()
 			return
 		self.heaplist.insert(0, self.heaplist.pop(self.size - 1))
 		index = 0
@@ -84,9 +94,12 @@ class BinHeap:
 					index = min
 				else:
 					break
+		lock.release()
+
 
 	def percDown(self,index):
-	    while (index + 1) * 2  - 1 <  self.size:
+		lock.acquire()
+		while (index + 1) * 2  - 1 <  self.size:
 			if (index + 1) * 2 < self.size and self.heaplist[(index + 1) * 2  - 1] > self.heaplist[(index + 1) * 2]:
 				min = (index + 1) * 2
 			else:
@@ -105,8 +118,10 @@ class BinHeap:
 					index = min
 				else:
 					break
+		lock.release()
 
 	def updatePriority(self, vClock, port, priority):#target is a dic {'log':log, 'priority':num}
+		lock.acquire()
 		isFound = False
 		for val in self.heaplist:
 			if (val['log']['vClock'] == vClock) and (val['log']['id'] == port): 
@@ -126,11 +141,17 @@ class BinHeap:
 					self.priority = priority
 		if not isFound:
 			print "cannot find the target log"
+		self.printheap()
+		lock.release()
+
+
 
 	def findPriority(clkport):
+		lock.acquire()
 		for val in self.heaplist:
 			if json.dumps({'clock':val['log']['vClock'],'id':val['log']['id']}) == clkport:
 				return val['priority']
+		lock.release()
 		return None
 
 	def getPriority(self):
@@ -167,12 +188,16 @@ class BinHeap:
 		return self.dic[clkport]['log']['deliverable'] == True
 
 	def setDeliverable(self,clkport):
+		lock.acquire()
 		if self.size == 0:
+			lock.release()
 			return
 		try:
 			self.dic[clkport]['log']['deliverable'] = True
 		except KeyError:
 			pass
+		lock.release()
+	
 
 	def clkCompare(self, lista, listb):
 		length = len(lista)

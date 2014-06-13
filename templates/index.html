@@ -192,6 +192,12 @@
             return keeperConnected(0);
         })
 
+        keeper_socket.on('stop', function(){
+            disconn = true;
+            keeper_socket.disconnect();
+            return;
+        })
+
         keeper_socket.on('my change', function(msg) {
             //alert(msg.changedString+msg.startCursor+msg.endCursor);
             data = new Data(msg.changedString,msg.startCursor,msg.endCursor,msg.version_num);    

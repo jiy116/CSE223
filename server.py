@@ -29,6 +29,10 @@ lastCursor = 0
 
 version_num = 0
 
+#lease num
+leaseNum = None
+lastLease = None
+
 #the socket to other servers
 socketsList = {}
 
@@ -86,6 +90,24 @@ class MyThread2(threading.Thread):
     def run(self):
         keeperConn(self.connection)
 
+#check the lease
+def checkLease():
+    global lastLease
+    global leaseNum
+    while True:
+        time.sleep(3)
+        if lastLease == None:
+            continue
+        if lastLease == leaseNum:
+            leaveClients()
+            sys.exit()
+        else:
+            lastLease = leaseNum
+
+#let all clients go to other servers
+def leaveClients():
+    global socketio
+    socketio.emit('stop')
 
 #send the head of queue to other clients if deliverable
 def sendQueue():
@@ -93,7 +115,7 @@ def sendQueue():
     global logList
     global socketio
     while (not logList.isEmpty()) and (logList.isDeliverable()) :
-            #if deliverable, send it to all 
+        #if deliverable, send it to all 
         topLog = logList.peek()
         prior = logList.getPriority()
         updateText(topLog)
@@ -102,7 +124,10 @@ def sendQueue():
                                    'vClock':topLog['vClock'],'version_num':1}, namespace='/test')
         logCommited[json.dumps({'clock':topLog['vClock'],'id':topLog['id']})] = {'log':topLog,'priority':prior}
         logList.remove()
-        del logMap[json.dumps({'clock':topLog['vClock'],'id':topLog['id']})]
+        print "logMap is: "
+        print logMap
+        if topLog['id'] == serverId:
+            del logMap[json.dumps({'clock':topLog['vClock'],'id':topLog['id']})]
 
 #ask other servers to know if the logs can be commit
 def askCommit(mid):
@@ -151,12 +176,14 @@ def listenServer():
             recvdata = json.loads(connection.recv(1024))
             print recvdata
             if str(recvdata['role']) == 'server':
+                print socketsList
                 if socketsList.has_key(int(recvdata['id'])):
                     print "already has"
-                    pass
+                    #continue
                 else:
-                    print "new port!"
                     succ = addnewSocket(int(recvdata['id']))
+                    print "try to connect to the new port"
+                    print recvdata['id']
                     if succ == False:
                         continue
                 MyThread1(connection,int(recvdata['id'])).start()
@@ -186,11 +213,11 @@ def listenServer():
 
 #connection to a server
 def serverConn(connection,sid):
-    connection.sendall('server')
     global sendThreshold
     global lastCheck
     #print "server receive begin!"
     #print serverId
+    print "add threshold"
     sendThreshold += 1
     connId = sid
     while True:
@@ -213,7 +240,7 @@ def serverConn(connection,sid):
             #print "get buf!"
             #print serverId
 
-            #print "action is " + buf['action']
+            print "action is " + buf['action']
 
             #send the string to other server
             if str(buf['action']) == "requestString":
@@ -250,7 +277,7 @@ def serverConn(connection,sid):
                         continue
 
             elif str(buf['action']) == "ack":
-                print 'ack'
+                #print 'ack'
                 logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})][int(buf['receiver'])] = True
 
                 if logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})] < buf['priority']:
@@ -262,7 +289,7 @@ def serverConn(connection,sid):
                     locPrio = logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
                     logList.updatePriority(buf['vClock'],buf['id'],locPrio)
                     
-                    del logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
+                    #del logMap[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
                     del logPrio[json.dumps({'clock':buf['vClock'],'id':buf['id']})]
                     broadcast_server("commit",{'vClock':buf['vClock'],'id':buf['id'],'priority':locPrio})
                     sendQueue()
@@ -273,6 +300,7 @@ def serverConn(connection,sid):
                 logList.updatePriority(buf['log']['vClock'],buf['log']['id'],buf['log']['priority'])
                 logList.setDeliverable(json.dumps({'clock':buf['log']['vClock'],'id':buf['log']['id']}))
                 sendQueue()
+                print "send OK!"
 
             #other asks for the information of this 
             elif str(buf['action']) == "askCommit":
@@ -355,22 +383,36 @@ def findCommit(mid):
 
 #connection to a keeper
 def keeperConn(connection):
-    connection.sendall('keeper')
     global clock
+    global leaseNum
     while True:
+        #print "threshold is:"
+        #print sendThreshold
         try:
             recvdata = connection.recv(1024)
+            if leaseNum == None:
+                leaseNum = 0
+            else:
+                leaseNum += 1
             if recvdata == None:
                 print "empty recv!"
                 continue
             buf = json.loads(recvdata)
+            #print "keeper sends:"
+            #print buf
             if str(buf['action']) == "askClock":
-                print clock
+                #print clock
                 view = socketsList.keys()
                 view.append(serverId)
                 connection.sendall(json.dumps({'clock':clock[serverId],'clientNum':currClient,'myview':view}))
             
             elif str(buf['action']) == "setClock":
+                #check if self in the view
+                currView = buf['myview']
+                if not (serverId in currView):
+                    leaveClients()
+                    sys.exit()
+
                 retclock = buf['vectorClock']
                 for i in range(len(clock)):
                     clock[i] = retclock[i]
@@ -393,7 +435,6 @@ def reConn(port,num):
             address = ('127.0.0.1',port+5000)
             client.connect(address)
             client.send(json.dumps({'role':'server','id':serverId}))
-            client.recv(1024)
 
             #add the client socket to our list
             socketsList[port] = client
@@ -424,12 +465,12 @@ def updateText(log):
 
     if endCursor < startCursor :
         if startCursor <= len(nbString):
-            nbString = nbString[0:endCursor]+nbString[startCursor:]
+            nbString = nbString[0:endCursor] + nbString[startCursor:]
         else:
             nbString = nbString[0:endCursor]
     else:
         if endCursor <= len(nbString) + len(changedString):
-            nbString = nbString[0:startCursor] + changedString+nbString[startCursor:]
+            nbString = nbString[0:startCursor] + changedString + nbString[startCursor:]
         else:
             nbString = nbString[0:startCursor] + changedString
 
@@ -447,8 +488,6 @@ def updateLog(changedString,startCursor,endCursor):
 
         curr_version = curr_version + 1
     return (changedString,startCursor,endCursor)
-
-
 
 #get string from other servers
 def connectInitial():
@@ -472,13 +511,12 @@ def connectInitial():
                 client.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
                 client.settimeout(5)
                 client.connect(address)
-                client.send(json.dumps({'role':'server','id':serverId}))
-                client.recv(1024)
+                client.sendall(json.dumps({'role':'server','id':serverId}))
                 #add the client socket to our list
                 socketsList[x] = client
 
                 #request string and get the newest one
-                sendData = {'action':"requestString",'id':serverId}
+                sendData = {'action':"requestString"}
                 client.send(json.dumps(sendData))
                 recvData = json.loads(client.recv(1024))
                 print recvData['vclock']
@@ -604,13 +642,18 @@ def log_send(message):
         socketio.emit('my change',newlog, namespace='/test')
         return
 
+    print "1"
     logList.add({'log':newlog})
 
+    print "2"
     locPrio = logList.getPriority()
+
+    print "3"
     logPrio[json.dumps({'clock':clock,'id':serverId})] = locPrio
     
     #socketio.emit('my change',{'changedString':message['changedString'],'startCursor':message['startCursor'],'endCursor':message['endCursor'],'version_num':1})
     #to other servers
+    print "4"
     logMap[json.dumps({'clock':clock,'id':serverId})] = {}
     broadcast_server("server_log",newlog)
 
@@ -623,6 +666,8 @@ if __name__ == '__main__':
     thread.start()
     thread2 = Thread(target=checkLate)
     thread2.start()
+    thread3 = Thread(target=checkLease)
+    thread3.start()
     connectInitial()
     socketio.run(app,host='0.0.0.0',port=serverId+10000)
 

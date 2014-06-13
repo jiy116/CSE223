@@ -55,17 +55,26 @@ loadList = [9999999]*serverMax
 #connect status
 disconnect = False
 
+#every one's view
+viewdic = {}
+
+#current view
+viewlist = []
+
+currview = []
 
 #dialServer
 def dialServer(port):
     global vectorClock
     try: 
+
         client = socketsList[port]
         sendData = {'action':'askClock'}
         client.settimeout(0.5)
         #redail
         try:
             client.send(json.dumps(sendData))
+            data = json.loads(client.recv(1024))
         except:
 
             newclient = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -73,18 +82,16 @@ def dialServer(port):
             address =('127.0.0.1',port+5000)
             newclient.connect(address)
             newclient.send(json.dumps({'role':'keeper'}))
-            newclient.recv(1024)
+            #newclient.recv(1024)
             socketsList[port] = newclient
             sendData = {'action':'askClock'}
             newclient.send(json.dumps(sendData))
             data = json.loads(newclient.recv(1024))
-            vectorClock[port] = int(data['clock'])
-            loadList[port] = int(data['clientNum'])
-            return
-        
-        data = json.loads(client.recv(1024))
+
         vectorClock[port] = int(data['clock'])
         loadList[port] = int(data['clientNum'])
+        viewdic[port] = data['myview']
+
         return
     except:
         vectorClock[port] = -1
@@ -97,11 +104,12 @@ def dialServer(port):
 def keeperWork():
     global ports
     global serverMax
-
+    global viewdic
     initialConnect()
 
     while True:
         time.sleep(1.5)
+        viewdic = {}
         #print vectorClock
         thread_arr = []
         for port in ports:
@@ -112,10 +120,46 @@ def keeperWork():
 
         for i in range(serverMax): 
             thread_arr[i].join()
+
+
+        getView()
         sendClock()
         validserver = count_alive()
+
         
         
+def getView():
+    global dicview
+    global currview
+    currview = []
+
+    for myview in viewdic:
+        ret = findview(viewdic[myview])
+        if len(ret)>len(currview):
+            currview = ret
+
+
+#find one's view
+def findview(set):
+    global viewdic
+    ret = range(serverMax)
+    for node in set:
+        ret = merge(viewdic[node],ret)
+    return ret
+
+
+#merge two set2
+def merge(set1,set2):
+    dic = {}
+    ret = []
+    for node in set1:
+        dic[node] = 1
+    for node in set2:
+        if node in dic:
+            ret.append(node)
+    #print ret
+    return ret
+
 
 #count how many server alive
 def count_alive():
@@ -124,7 +168,7 @@ def count_alive():
 
     validserver = 0
     for i in vectorClock:
-        if i!=-1:
+        if i != -1:
             validserver += 1
     return validserver
 
@@ -133,10 +177,10 @@ def count_alive():
 def sendClock():
     global vectorClock
     #global ports
-    sendData = {'action':'setClock','vectorClock': vectorClock}
+    sendData = {'action':'setClock','vectorClock': vectorClock,'myview': currview}
     for port in ports:
         try:
-            socketsList[port].send(json.dumps(sendData))
+            socketsList[port].sendall(json.dumps(sendData))
         except:
             pass
 
@@ -146,7 +190,6 @@ def initialConnect():
     global socketsList
     global ports
     HOST = '127.0.0.1'    # The remote host
-
 
     for port in ports:
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -161,10 +204,6 @@ def initialConnect():
         except:
             pass
         socketsList[port] = client
-
-
-
-
 
 @app.route('/')
 def index():
