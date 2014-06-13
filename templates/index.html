@@ -160,6 +160,7 @@
         var disconn = false;
         keeper_socket = new io.connect('http://' + document.domain + ':' + (port+10000) + namespace,{'reconnect':false,'force new connection':true,'try multiple transports':true,'connect timeout':5000});
 
+        status = 1;
         //location.replace("http://0.0.0.0:" + (port+10000));
 
         keeper_socket.on('connect',function(){
@@ -174,8 +175,9 @@
             $('#text1').val(msg.nbString);
             $('#log1').append('<br>get new text: '+msg.nbString);
             nbString = msg.nbString;
-            lastCursor = len(nbString);
+            lastCursor = nbString.length;
             clientLog = [];
+            $('#log1').append(clientLog.length);
         })
 
 
@@ -189,6 +191,10 @@
                 return;             
             }
             keeper_socket = null;  
+            return keeperConnected(0);
+        })
+
+        keeper_socket.on('error',function(){
             return keeperConnected(0);
         })
 
@@ -220,6 +226,7 @@
         */
         $('textarea#text1').bind('input propertychange',function(){
             if (status == 1) {
+                $('#log1').append('<br> ' + lastCursor);
                 var getData = getChanged(document.getElementById('text1'));
                 $('#text1').val(nbString);
                 keeper_socket.emit('my log',{changedString:getData.changedString, 
@@ -301,19 +308,20 @@
             //check if any server available
             if (server == -1) {
                 return disconnectedMode();
-            };
+            }
 
             //if (socket == null) {
             //  $('#log1').append('<br>new port!');
                 //socket = io.connect('http://' + document.domain + ':' + (port+5000) + namespace, {'reconnect':false});
                 //keeper_socket.close();
             //}
-            //else{
-            $('#log1').append('<br>another port! ' + pos);
-            //socket.options.port = port+5000;
-            keeper_socket.disconnect();
-            keeper_socket = null;
-            return serverConnected(pos);        
+            else{
+                $('#log1').append('<br>another port! ' + pos);
+                //socket.options.port = port+5000;
+                keeper_socket.disconnect();
+                keeper_socket = null;
+                return serverConnected(pos);
+            }        
         });
     }
 
@@ -325,10 +333,12 @@
 
         $('textarea#text1').bind('input propertychange',function(){
             if (status == 0) {
+                $('#log1').append("new log!");
                 var getData = getChanged(document.getElementById('text1'));
                 //$('#text1').val(nbString);
                 //updateText(getData);
-                clientLog.append(getData);
+                clientLog.push(getData);
+                $('#log1').append(clientLog);
             };
         });
 
@@ -354,6 +364,7 @@
     $(document).ready(function(){
 
         //try to connect to keepers
+        $('#log1').append('<br>Initial!');
         keeperConnected(location.port-8000);
 
         //connect to server

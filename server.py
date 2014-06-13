@@ -14,13 +14,14 @@ from flask.ext.socketio import SocketIO, emit, join_room, leave_room
 from Heap import BinHeap
 from multiprocessing.dummy import Pool as ThreadPool
 
+lock = threading.RLock()
+
 app = Flask(__name__)
 app.debug = False
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app)
 
 #set socket timeout
-
 
 #content
 nbString = ""
@@ -124,8 +125,6 @@ def sendQueue():
                                    'vClock':topLog['vClock'],'version_num':1}, namespace='/test')
         logCommited[json.dumps({'clock':topLog['vClock'],'id':topLog['id']})] = {'log':topLog,'priority':prior}
         logList.remove()
-        print "logMap is: "
-        print logMap
         if topLog['id'] == serverId:
             del logMap[json.dumps({'clock':topLog['vClock'],'id':topLog['id']})]
 
@@ -134,8 +133,32 @@ def askCommit(mid):
     broadcast_server('askCommit',mid)
 
 #combine the logs from disconnect mode
-def combineLog(logList):
-    pass
+def combineLog(disList):
+    for x in xrange(0,len(disList)):
+        #update the vector clock and save it in the log list
+        clock[serverId] += 1
+        refClock = copy.deepcopy(clock)
+        print "length is "
+        print len(nbString)
+        print nbString
+        newlog = {'changedString':disList[x]['changedString'],'startCursor': disList[x]['startCursor']+len(nbString),
+                  'endCursor': disList[x]['endCursor']+len(nbString),'vClock': refClock,'deliverable':False,'id':serverId,'version_num':version_num}
+
+        #if only one server
+        if sendThreshold == 0:
+            updateText(newlog)
+            socketio.emit('my change',newlog, namespace='/test')
+            continue
+
+        logList.add({'log':newlog})
+        locPrio = logList.getPriority()
+        logPrio[json.dumps({'clock':clock,'id':serverId})] = locPrio
+        
+        #socketio.emit('my change',{'changedString':message['changedString'],'startCursor':message['startCursor'],'endCursor':message['endCursor'],'version_num':1})
+        #to other servers
+        logMap[json.dumps({'clock':clock,'id':serverId})] = {}
+        broadcast_server("server_log",newlog)
+        
 
 def checkLog():
     global logList
@@ -245,7 +268,10 @@ def serverConn(connection,sid):
             #send the string to other server
             if str(buf['action']) == "requestString":
                 #add a socket according to the new server
-                data = {'text':nbString,'vclock':clock}
+                oldList = logList.getList()
+                oldDic = logList.getDic()
+                oldPrior = logList.getBigPrior()
+                data = {'text':nbString,'vclock':clock,'list':oldList,'dic':oldDic,'prior':oldPrior}
                 print json.dumps(data)
                 connection.sendall(json.dumps(data))
 
@@ -497,6 +523,9 @@ def connectInitial():
 
     tempString = ""
     tempclock = [-1]*serverMax
+    tempPrior = 0
+    tempList = []
+    tempDic = {}
     changed = False
     for x in xrange(0,serverMax):
         if x == serverId:
@@ -525,6 +554,9 @@ def connectInitial():
                     print 'get here'
                     tempclock = recvData['vclock']
                     tempString = recvData['text']
+                    tempDic = recvData['dic']
+                    tempList = recvData['list']
+                    tempPrior = recvData['prior']
                     changed = True
                 
             except socket.error,msg:
@@ -533,6 +565,9 @@ def connectInitial():
     if changed == True:
         update_clock(tempclock)
         nbString = tempString
+        logList.setList(tempList)
+        logList.setPrior(tempPrior)
+        logList.setDic(tempDic)
         print "get "+nbString
 
 
@@ -610,9 +645,12 @@ def test_message(message):
     currClient += 1
     print "get new string!"
     disconnLogs = message['data']
+    print disconnLogs
     if len(disconnLogs) != 0:
+        emit('my connect', {'nbString':nbString})
         combineLog(disconnLogs)
-    emit('my connect', {'nbString':nbString})
+    else:
+        emit('my connect', {'nbString':nbString})
 
 
 #get the log from clients
@@ -634,26 +672,21 @@ def log_send(message):
     clock[serverId] += 1
     refClock = copy.deepcopy(clock)
     newlog = {'changedString':message['changedString'],'startCursor': message['startCursor'],
-              'endCursor': message['endCursor'],'vClock': refClock,'deliverable':False,'id':serverId,'version_num':1}
+              'endCursor': message['endCursor'],'vClock': refClock,'deliverable':False,'id':serverId,'version_num':version_num}
 
     #if only one server
     if sendThreshold == 0:
         updateText(newlog)
+        print newlog
         socketio.emit('my change',newlog, namespace='/test')
         return
 
-    print "1"
     logList.add({'log':newlog})
-
-    print "2"
     locPrio = logList.getPriority()
-
-    print "3"
     logPrio[json.dumps({'clock':clock,'id':serverId})] = locPrio
     
     #socketio.emit('my change',{'changedString':message['changedString'],'startCursor':message['startCursor'],'endCursor':message['endCursor'],'version_num':1})
     #to other servers
-    print "4"
     logMap[json.dumps({'clock':clock,'id':serverId})] = {}
     broadcast_server("server_log",newlog)
 

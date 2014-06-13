@@ -105,6 +105,7 @@ def keeperWork():
     global ports
     global serverMax
     global viewdic
+    global validserver
     initialConnect()
 
     while True:

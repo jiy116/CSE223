@@ -144,8 +144,6 @@ class BinHeap:
 		self.printheap()
 		lock.release()
 
-
-
 	def findPriority(clkport):
 		lock.acquire()
 		for val in self.heaplist:
@@ -222,6 +220,25 @@ class BinHeap:
 		if flag == -1 * length:
 			return 0
 		return -1
+
+	#the six accessor or mutator functions
+	def getList(self):
+		return self.heaplist
+
+	def getDic(self):
+		return self.dic
+
+	def getBigPrior(self):
+		return self.priority
+
+	def setPrior(self,prior):
+		self.priority = prior
+
+	def setList(self,newList):
+		self.heaplist = newList
+
+	def setDic(self,dic):
+		self.dic = dic
 
 if __name__ == "__main__":
 	myheap = BinHeap()
